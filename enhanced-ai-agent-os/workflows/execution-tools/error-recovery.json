@@ -1,0 +1,38 @@
+{
+  "name": "Execution Tools - Error Recovery",
+  "nodes": [
+    {
+      "parameters": {"path": "execution/tools/error-recovery", "responseCode": 200, "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}}},
+      "id": "Webhook",
+      "name": "Webhook Error Recovery",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const policy=$json.policy||{maxRetries:3,backoff:'exponential'};\nconst plan=$json.plan||{batches:[]};\nconst retryableCodes=[408,429,500,502,503,504];\nconst recovery={\n  retries: { max: policy.maxRetries||3, per_task: true },\n  backoff: { strategy: policy.backoff||'exponential', base_ms: 500, factor: 2, max_ms: 30000, jitter: true },\n  circuit_breaker: { failure_threshold: 5, window_sec: 60, cool_down_sec: 120 },\n  classify: { retryable_codes: retryableCodes, non_retryable_codes: [400,401,403,404,422] },\n  compensation: { enabled: true, handlers: [] },\n  dead_letter: { enabled: true, topic: 'execution.failures' },\n  observability: { log_level: 'info', trace_context: true }\n};\nreturn [{ json: { recovery } }];"
+      },
+      "id": "Build",
+      "name": "Build Recovery Policy",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {"functionCode": "return [{ json: { status: 'ok', recovery: $json.recovery } }];"},
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Error Recovery": {"main": [[{"node": "Build Recovery Policy", "type": "main", "index": 0}]]},
+    "Build Recovery Policy": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["execution", "tools"],
+  "versionId": "execution-tools-recovery-v1"
+}

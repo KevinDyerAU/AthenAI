@@ -1,0 +1,38 @@
+{
+  "name": "Analysis Tools - Statistical Analysis",
+  "nodes": [
+    {
+      "parameters": {"path": "analysis/tools/statistical-analysis", "responseCode": 200, "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}}},
+      "id": "Webhook",
+      "name": "Webhook Statistical Analysis",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "function isNum(x){return typeof x==='number' && isFinite(x);}\nfunction col(arr,k){return arr.map(r=>r?.[k]).filter(v=>v!==null&&v!==undefined);}\nfunction mean(a){return a.reduce((s,x)=>s+x,0)/a.length;}\nfunction variance(a){const m=mean(a);return a.reduce((s,x)=>s+(x-m)*(x-m),0)/(a.length-1);}\nfunction std(a){return Math.sqrt(variance(a));}\nfunction median(a){const b=[...a].sort((x,y)=>x-y);const n=b.length;return n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2;}\nfunction quantile(a,q){const b=[...a].sort((x,y)=>x-y);const pos=(b.length-1)*q;const base=Math.floor(pos);const rest=pos-base;return b[base]+(b[base+1]-b[base])*rest;}\nfunction corr(x,y){const n=x.length;const mx=mean(x), my=mean(y);let num=0,dx=0,dy=0;for(let i=0;i<n;i++){const a=x[i]-mx,b=y[i]-my;num+=a*b;dx+=a*a;dy+=b*b;}return num/Math.sqrt(dx*dy);}\nfunction linreg(x,y){const mx=mean(x), my=mean(y);let num=0,den=0;for(let i=0;i<x.length;i++){num+=(x[i]-mx)*(y[i]-my);den+=(x[i]-mx)**2;}const slope=num/den;const intercept=my-slope*mx;const yhat=x.map(xi=>slope*xi+intercept);const ssTot=y.reduce((s,yi)=>s+(yi-my)**2,0);const ssRes=y.reduce((s,yi,i)=>s+(yi-yhat[i])**2,0);const r2=1-ssRes/ssTot;return {slope,intercept,r2};}\nfunction welchT(x,y){const nx=x.length, ny=y.length; const mx=mean(x), my=mean(y); const vx=variance(x), vy=variance(y); const t=(mx-my)/Math.sqrt(vx/nx + vy/ny); // df approx\nconst df=((vx/nx + vy/ny)**2)/(((vx**2)/((nx**2)*(nx-1)))+((vy**2)/((ny**2)*(ny-1)))); return {t, df};}\nconst body=$json; const data=Array.isArray(body.dataset)?body.dataset:[]; const target=body.target||null; const features=Array.isArray(body.features)?body.features:null; const timeKey=body.timeKey||null; const tasks=new Set(Array.isArray(body.tasks)?body.tasks:[]);\nconst keys=[...new Set(data.flatMap(r=>Object.keys(r||{})))];\nconst numericKeys=keys.filter(k=>col(data,k).every(v=>isNum(+v))).slice(0);\nconst desc={}; for(const k of numericKeys){const v=col(data,k).map(Number); if(v.length<2) continue; desc[k]={count:v.length, mean:mean(v), std:std(v), min:Math.min(...v), q1:quantile(v,0.25), median:median(v), q3:quantile(v,0.75), max:Math.max(...v)};}\nlet corrs=[]; if(tasks.has('correlation')){ for(let i=0;i<numericKeys.length;i++){ for(let j=i+1;j<numericKeys.length;j++){ const x=col(data,numericKeys[i]).map(Number); const y=col(data,numericKeys[j]).map(Number); const n=Math.min(x.length,y.length); if(n>2){ corrs.push({x:numericKeys[i], y:numericKeys[j], r:corr(x.slice(0,n), y.slice(0,n))}); } } } }\nlet regression=null; if(tasks.has('regression') && target && numericKeys.includes(target)){ const Xkeys=(features&&features.length?features:numericKeys.filter(k=>k!==target)); const X=col(data,Xkeys[0]).map(Number); const Y=col(data,target).map(Number); if(X.length>2 && Y.length>2){ regression={ target, feature:Xkeys[0], ...linreg(X,Y) }; } }\nlet anomalies=[]; if(tasks.has('anomaly') && target && numericKeys.includes(target)){ const v=col(data,target).map(Number); if(v.length>2){ const m=mean(v), s=std(v)||1; anomalies=v.map((val,idx)=>({index:idx, value:val, z:(val-m)/s})).filter(o=>Math.abs(o.z)>=3); } }\nlet infer=null; if(tasks.has('t_test') && features && features.length===1 && target){ const groupKey=features[0]; const g=Object.create(null); for(const r of data){ const k=r[groupKey]; if(!(k in g)) g[k]=[]; const val=Number(r[target]); if(isNum(val)) g[k].push(val); } const groups=Object.keys(g); if(groups.length===2){ infer={ test:'welch_t', groups, ...welchT(g[groups[0]], g[groups[1]]) }; } }\nconst recommendations=[]; if(target){ recommendations.push('Monitor anomalies on target using z-score>=3'); recommendations.push('Consider multivariate regression with additional predictors for better R^2'); } else { recommendations.push('Specify target for predictive modeling'); }\nreturn [{ json: { analysis: { descriptive: desc, correlations: corrs, regression, anomalies, inferential: infer }, recommendations } }];"
+      },
+      "id": "Compute",
+      "name": "Compute Statistics",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {"functionCode": "return [{ json: { status: 'ok', analysis: $json.analysis, recommendations: $json.recommendations } }];"},
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Statistical Analysis": {"main": [[{"node": "Compute Statistics", "type": "main", "index": 0}]]},
+    "Compute Statistics": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["analysis", "tools"],
+  "versionId": "analysis-tools-stat-v1"
+}

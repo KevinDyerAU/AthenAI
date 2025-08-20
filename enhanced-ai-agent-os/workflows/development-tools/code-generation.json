@@ -1,0 +1,38 @@
+{
+  "name": "Development Tools - Code Generation",
+  "nodes": [
+    {
+      "parameters": {"path": "development/tools/code-generation", "responseCode": 200, "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}}},
+      "id": "Webhook",
+      "name": "Webhook Code Generation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const requirements=$json.requirements||''; const languages=$json.languages||['python','javascript','java','csharp','go']; const project=$json.project||{name:'app'}; if(!requirements) throw new Error('requirements is required');\nconst scaffolds=languages.map(l=>({ language:l, structure: l==='python'?['src/','tests/','pyproject.toml'] : l==='javascript'?['src/','tests/','package.json'] : l==='java'?['src/main/java','src/test/java','pom.xml'] : l==='csharp'?['src/','tests/','.csproj'] : l==='go'?['cmd/','pkg/','go.mod'] : ['src/','tests/'] }));\nconst plan={ objectives: ['Satisfy requirements','Apply TDD','Ensure security best practices'], languages, project, scaffolds, guidelines: { code_style: 'lint + format', security: ['input validation','secrets management','dependency scan'] } };\nconst starterFiles=scaffolds.reduce((acc,s)=>{acc[s.language]=['README.md']; return acc;},{});\nreturn [{ json: { codegen: { plan, starterFiles } } }];"
+      },
+      "id": "Plan",
+      "name": "Generate Plan & Scaffolds",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {"functionCode": "return [{ json: { status: 'ok', codegen: $json.codegen } }];"},
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Code Generation": {"main": [[{"node": "Generate Plan & Scaffolds", "type": "main", "index": 0}]]},
+    "Generate Plan & Scaffolds": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["development", "tools"],
+  "versionId": "development-tools-codegen-v1"
+}

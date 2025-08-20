@@ -1,0 +1,38 @@
+{
+  "name": "Planning Tools - Timeline Optimization",
+  "nodes": [
+    {
+      "parameters": {"path": "planning/tools/timeline-optimization", "responseCode": 200, "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}}},
+      "id": "Webhook",
+      "name": "Webhook Timeline Optimization",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Critical path-like schedule based on deps and effort\nconst tasks=Array.isArray($json.tasks)?$json.tasks:[];\nconst allocation=$json.allocation||{assignments:[]};\nconst horizon=$json.horizon||{start:new Date().toISOString()};\nconst startDate=new Date(horizon.start||new Date().toISOString());\nconst assign=Object.fromEntries((allocation.assignments||[]).map(a=>[a.id,a.assignee]));\n// build graph\nconst byId=Object.fromEntries(tasks.map(t=>[t.id,{...t,deps:Array.isArray(t.deps)?t.deps:[]}]))\nconst indeg=Object.fromEntries(tasks.map(t=>[t.id,(byId[t.id].deps||[]).length]));\nconst adj={}; for(const t of tasks){ for(const d of (t.deps||[])){ if(!adj[d]) adj[d]=[]; adj[d].push(t.id);} }\n// topo sort\nconst q=tasks.filter(t=>indeg[t.id]===0).map(t=>t.id);\nconst order=[]; while(q.length){ const u=q.shift(); order.push(u); for(const v of (adj[u]||[])){ indeg[v]--; if(indeg[v]===0) q.push(v); } }\nif(order.length!==tasks.length){ throw new Error('Cycle detected in task dependencies'); }\n// schedule forward pass (days)\nfunction addDays(base, d){ const dt=new Date(base); dt.setUTCDate(dt.getUTCDate()+d); return dt; }\nconst dur=Object.fromEntries(tasks.map(t=>[t.id, Math.max(1, Math.ceil((t.effort||4)/8))])); // 1 day min, effort in hours -> days\nconst est={}, eft={};\nfor(const id of order){ const deps=byId[id].deps||[]; const estDay=deps.length? Math.max(...deps.map(d=>eft[d])) : 0; est[id]=estDay; eft[id]=estDay+dur[id]; }\n// critical path: backtrack from max EFT\nconst maxEFT=Math.max(...Object.values(eft));\nconst endIds=order.filter(id=>eft[id]===maxEFT);\nconst cp=new Set();\nfunction backtrack(id){ cp.add(id); const deps=byId[id].deps||[]; let chosen=null; let best=-1; for(const d of deps){ if(eft[d]>best && eft[d]===est[id]) { best=eft[d]; chosen=d; } } if(chosen) backtrack(chosen); }\nif(endIds[0]) backtrack(endIds[0]);\n// produce schedule with dates\nconst schedule=order.map(id=>({ id, title: byId[id].title||id, assignee: assign[id]||null, start: addDays(startDate, est[id]).toISOString(), end: addDays(startDate, eft[id]).toISOString(), duration_days: dur[id], critical: cp.has(id) }));\nreturn [{ json: { schedule, critical_path: schedule.filter(s=>s.critical).map(s=>s.id) } }];"
+      },
+      "id": "Optimize",
+      "name": "Optimize Timeline",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {"functionCode": "return [{ json: { status: 'ok', schedule: $json.schedule, critical_path: $json.critical_path } }];"},
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Timeline Optimization": {"main": [[{"node": "Optimize Timeline", "type": "main", "index": 0}]]},
+    "Optimize Timeline": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["planning", "tools"],
+  "versionId": "planning-tools-timeline-v1"
+}
