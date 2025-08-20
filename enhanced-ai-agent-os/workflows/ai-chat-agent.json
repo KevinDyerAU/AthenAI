@@ -1,0 +1,195 @@
+{
+  "name": "AI Chat Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "chat/send",
+        "responseCode": 200,
+        "options": {
+          "responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}
+        }
+      },
+      "id": "Webhook_Send",
+      "name": "Webhook Chat Send",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [220, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Normalize incoming payload and ensure session\nconst body = $json || {};\nconst text = body.message || body.text || '';\nconst session = body.sessionId || body.session_id || (body.context && (body.context.sessionId||body.context.session_id)) || 'anonymous-session';\nconst userId = body.userId || body.user_id || (body.context && (body.context.userId||body.context.user_id)) || null;\nif (!text) { throw new Error('Missing message text'); }\nreturn [{ json: { text, sessionId: session, userId, meta: body.meta || {}, now: new Date().toISOString() } }];"
+      },
+      "id": "Normalize",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [480, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{`INSERT INTO chat_sessions (session_id, user_id, updated_at) VALUES ('${$json.sessionId}', ${$json.userId ? '\'' + $json.userId + '\'' : 'NULL'}, now()) ON CONFLICT (session_id) DO UPDATE SET user_id = EXCLUDED.user_id, updated_at = now();`}}"
+      },
+      "id": "PG_Upsert_Session",
+      "name": "PG Upsert Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [740, 120]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{`INSERT INTO chat_messages (session_id, role, content, created_at) VALUES ('${$json.sessionId}', 'user', '${($json.text||'').replace(/'/g, "''")}', now());`}}"
+      },
+      "id": "PG_Insert_UserMsg",
+      "name": "PG Insert User Msg",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [740, 280]
+    },
+    {
+      "parameters": {
+        "promptType": "chat",
+        "provider": "openai",
+        "model": "gpt-4",
+        "systemMessage": "You are the AI Chat Agent for the Enhanced AI Agent OS. Maintain natural, helpful dialogue. If a request requires multi-agent orchestration (complex research, multi-step workflows, data integrations), propose delegation with a JSON object: { delegate: true, queue: 'agents.research' | 'agents.analysis' | 'agents.creative', rationale: string, plan: string[] }. Otherwise respond directly. Always be concise and user-friendly.",
+        "inputKey": "={{$json.text}}",
+        "toolsAgent": false,
+        "temperature": 0.4,
+        "maxTokens": 500
+      },
+      "id": "AI_Chat",
+      "name": "AI Chat (Chat Agent)",
+      "type": "n8n-nodes-base.aiAgent",
+      "typeVersion": 1,
+      "position": [980, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Decide whether to delegate or reply directly\nconst out = items[0].json;\nlet delegate = false;\nlet data = null;\ntry { data = typeof out === 'string' ? JSON.parse(out) : out; } catch(e){}\nif (data && typeof data === 'object' && data.delegate) {\n  delegate = true;\n}\nreturn [{ json: { delegate, decision: data || out, sessionId: $json.sessionId, text: $json.text, userId: $json.userId } }];"
+      },
+      "id": "Decide",
+      "name": "Decide Delegate vs Reply",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1220, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Build assistant reply string\nconst d = $json.decision;\nlet reply = '';\nif (typeof d === 'object' && d.delegate) {\n  reply = `I will coordinate this with our ${d.queue||'agents'} team. Reason: ${d.rationale||'Not provided.'}`;\n} else if (typeof d === 'string') {\n  reply = d;\n} else {\n  reply = JSON.stringify(d);\n}\nreturn [{ json: { reply } }];"
+      },
+      "id": "Build_Reply",
+      "name": "Build Assistant Reply",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1460, 120]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{`INSERT INTO chat_messages (session_id, role, content, created_at) VALUES ('${$json.sessionId}', 'assistant', '${($json.reply||'').replace(/'/g, "''")}', now());`}}"
+      },
+      "id": "PG_Insert_AssistantMsg",
+      "name": "PG Insert Assistant Msg",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1700, 120]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.masterUrl || $env.N8N_BASE_URL || 'http://localhost:5678'}}/webhook/master/orchestrate",
+        "options": {},
+        "sendBody": true,
+        "jsonParameters": true,
+        "optionsQuery": {},
+        "bodyParametersJson": "={{ {request: $json.text, priority: 'normal', context: { userId: $json.userId, sessionId: $json.sessionId } } }}"
+      },
+      "id": "Delegate_HTTP",
+      "name": "Delegate → Master HTTP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ json: { status: 'ok', reply: $json.reply, delegated: false } }];"
+      },
+      "id": "Response_Reply",
+      "name": "Response (Reply)",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1940, 120]
+    },
+    {
+      "parameters": {
+        "functionCode": "const orchestrate = items[0].json;\nreturn [{ json: { status: 'delegated', reply: 'Task delegated to Master Orchestration Agent.', orchestration: orchestrate } }];"
+      },
+      "id": "Response_Delegated",
+      "name": "Response (Delegated)",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1700, 300]
+    },
+
+    {
+      "parameters": {
+        "path": "chat/history",
+        "responseCode": 200,
+        "options": {
+          "responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}
+        }
+      },
+      "id": "Webhook_History",
+      "name": "Webhook Chat History",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [220, 500]
+    },
+    {
+      "parameters": {
+        "functionCode": "const body = $json || {};\nconst session = body.sessionId || body.session_id;\nif (!session) throw new Error('sessionId is required');\nreturn [{ json: { sessionId: session, limit: Number(body.limit||50) } }];"
+      },
+      "id": "Normalize_History",
+      "name": "Normalize History Request",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [480, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{`SELECT role, content, created_at FROM chat_messages WHERE session_id='${$json.sessionId}' ORDER BY created_at ASC LIMIT ${$json.limit};`}}"
+      },
+      "id": "PG_Select_History",
+      "name": "PG Select History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [740, 500]
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ json: { sessionId: $json.sessionId, history: items.map(i=>i.json) } }];"
+      },
+      "id": "Response_History",
+      "name": "Response (History)",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [980, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Chat Send": {"main": [[{"node": "Normalize Input", "type": "main", "index": 0}]]},
+    "Normalize Input": {"main": [[{"node": "PG Upsert Session", "type": "main", "index": 0}], [{"node": "PG Insert User Msg", "type": "main", "index": 0}], [{"node": "AI Chat (Chat Agent)", "type": "main", "index": 0}]]},
+    "AI Chat (Chat Agent)": {"main": [[{"node": "Decide Delegate vs Reply", "type": "main", "index": 0}]]},
+    "Decide Delegate vs Reply": {"main": [[{"node": "Build Assistant Reply", "type": "main", "index": 0}], [{"node": "Delegate → Master HTTP", "type": "main", "index": 0}]]},
+    "Build Assistant Reply": {"main": [[{"node": "PG Insert Assistant Msg", "type": "main", "index": 0}], [{"node": "Response (Reply)", "type": "main", "index": 0}]]},
+    "Delegate → Master HTTP": {"main": [[{"node": "Response (Delegated)", "type": "main", "index": 0}]]},
+
+    "Webhook Chat History": {"main": [[{"node": "Normalize History Request", "type": "main", "index": 0}]]},
+    "Normalize History Request": {"main": [[{"node": "PG Select History", "type": "main", "index": 0}]]},
+    "PG Select History": {"main": [[{"node": "Response (History)", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["chat", "ai", "agent"],
+  "versionId": "ai-chat-agent-v1"
+}

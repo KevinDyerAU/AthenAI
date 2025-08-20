@@ -1,0 +1,23 @@
+{
+  "name": "Research Tool — Academic Search (Semantic Scholar)",
+  "nodes": [
+    {"parameters": {"path": "research/tools/academic-search", "responseCode": 200}, "id": "Webhook", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 1, "position": [200, 140]},
+    {"parameters": {"functionCode": "const b=$json||{};const q=b.query||b.q;const limit=Math.max(1, Math.min(10, Number(b.limit||5)));if(!q)throw new Error('query required');return [{json:{q,limit}}];"}, "id": "Normalize", "name": "Normalize", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [460, 140]},
+
+    {"parameters": {"url": "=https://api.semanticscholar.org/graph/v1/paper/search", "sendQuery": true, "queryParametersUi": {"parameter": [
+      {"name": "query", "value": "={{$json.q}}"},
+      {"name": "limit", "value": "={{$json.limit}}"},
+      {"name": "fields", "value": "title,authors,year,url,venue"}
+    ]}}, "id": "SemanticScholar", "name": "Semantic Scholar Search", "type": "n8n-nodes-base.httpRequest", "typeVersion": 1, "position": [720, 140]},
+
+    {"parameters": {"functionCode": "const data=items[0].json||{};const out=[];if(Array.isArray(data.data)){for(const p of data.data){out.push({source:'semanticscholar',title:p.title,url:p.url,authors:(p.authors||[]).map(a=>a.name).join(', '),year:p.year,venue:p.venue});}}return [{json:{results:out}}];"}, "id": "Respond", "name": "Respond", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [980, 140]}
+  ],
+  "connections": {
+    "Webhook": {"main": [[{"node": "Normalize", "type": "main", "index": 0}]]},
+    "Normalize": {"main": [[{"node": "Semantic Scholar Search", "type": "main", "index": 0}]]},
+    "Semantic Scholar Search": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["research", "academic"],
+  "versionId": "research-academic-search-v1"
+}

@@ -1,0 +1,35 @@
+{
+  "name": "Creative Tool — Content Generation",
+  "nodes": [
+    {"parameters": {"path": "creative/tools/content-generate", "responseCode": 200}, "id": "Webhook", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 1, "position": [200, 200]},
+    {"parameters": {"functionCode": "const b=$json||{};const kind=(b.kind||b.type||'text').toLowerCase();const style=b.style||{};const prompt=b.prompt||b.brief||'';const model=b.model||null;const assets=b.assets||{};const size=b.size||'1024x1024';const voice=b.voice||'alloy';const format=b.format||'mp3';const iter=Number(b.iterations||1);if(!prompt)throw new Error('prompt required');return [{json:{kind,style,prompt,model,assets,size,voice,format,iter}}];"}, "id": "Normalize", "name": "Normalize Input", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [460, 200]},
+
+    {"parameters": {"conditions": {"string": [{"value1": "={{$json.kind}}", "operation": "equal", "value2": "text"}]}}, "id": "IfText", "name": "If Text", "type": "n8n-nodes-base.if", "typeVersion": 1, "position": [720, 80]},
+    {"parameters": {"conditions": {"string": [{"value1": "={{$json.kind}}", "operation": "equal", "value2": "image"}]}}, "id": "IfImage", "name": "If Image", "type": "n8n-nodes-base.if", "typeVersion": 1, "position": [720, 200]},
+    {"parameters": {"conditions": {"string": [{"value1": "={{$json.kind}}", "operation": "equal", "value2": "audio"}]}}, "id": "IfAudio", "name": "If Audio", "type": "n8n-nodes-base.if", "typeVersion": 1, "position": [720, 320]},
+
+    {"parameters": {"promptType": "chat", "provider": "openai", "model": "={{$json.model || 'gpt-4'}}", "systemMessage": "You are a professional creative writer adhering to provided style guidelines. Produce on-brief, high-quality content.", "inputKey": "={{$json}}", "toolsAgent": false, "temperature": 0.8, "maxTokens": 1200}, "id": "TextGen", "name": "AI Text Generate", "type": "n8n-nodes-base.aiAgent", "typeVersion": 1, "position": [980, 40]},
+
+    {"parameters": {"url": "=https://api.openai.com/v1/images/generations", "options": {"ignoreResponseCode": true}, "sendBody": true, "jsonParameters": true, "authentication": "predefinedCredentialType", "nodeCredentialType": "openAiApi", "bodyParametersJson": "={{ { prompt: $json.prompt, size: $json.size, model: $json.model || 'gpt-image-1' } }}"}, "id": "ImageOpenAI", "name": "Image Gen (OpenAI)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 1, "position": [980, 180]},
+
+    {"parameters": {"url": "={{$env.MIDJOURNEY_WEBHOOK_URL || ''}}", "options": {"ignoreResponseCode": true}, "sendBody": true, "jsonParameters": true, "bodyParametersJson": "={{ { action: 'imagine', prompt: $json.prompt, style: $json.style } }}"}, "id": "ImageMidjourney", "name": "Image Gen (Midjourney Webhook)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 1, "position": [980, 240]},
+
+    {"parameters": {"url": "=https://api.openai.com/v1/audio/speech", "options": {"ignoreResponseCode": true}, "sendBody": true, "jsonParameters": true, "authentication": "predefinedCredentialType", "nodeCredentialType": "openAiApi", "headerParametersUi": {"parameter": [{"name":"Accept","value":"audio/mpeg"}]}, "bodyParametersJson": "={{ { model: $json.model || 'gpt-4o-mini-tts', voice: $json.voice, input: $json.prompt, format: $json.format } }}"}, "id": "AudioGen", "name": "Audio TTS (OpenAI)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 1, "position": [980, 320]},
+
+    {"parameters": {"functionCode": "// Package outputs\nconst k=$json.kind;const out=items[0].json;return [{json:{kind:k, output: out, meta:{provider:k==='image'?'openai/midjourney':(k==='audio'?'openai':'openai'), model:$json.model}}}];"}, "id": "Respond", "name": "Respond", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [1240, 200]}
+  ],
+  "connections": {
+    "Webhook": {"main": [[{"node": "Normalize Input", "type": "main", "index": 0}]]},
+    "Normalize Input": {"main": [[{"node": "If Text", "type": "main", "index": 0}], [{"node": "If Image", "type": "main", "index": 0}], [{"node": "If Audio", "type": "main", "index": 0}]]},
+    "If Text": {"main": [[{"node": "AI Text Generate", "type": "main", "index": 0}], []]},
+    "AI Text Generate": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "If Image": {"main": [[{"node": "Image Gen (OpenAI)", "type": "main", "index": 0}], [{"node": "Image Gen (Midjourney Webhook)", "type": "main", "index": 0}]]},
+    "Image Gen (OpenAI)": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "Image Gen (Midjourney Webhook)": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "If Audio": {"main": [[{"node": "Audio TTS (OpenAI)", "type": "main", "index": 0}]]},
+    "Audio TTS (OpenAI)": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["creative", "generation"],
+  "versionId": "creative-content-generation-v1"
+}
