@@ -1,0 +1,8 @@
+{
+  "editorTheme": "dark",
+  "hideUsagePage": true,
+  "allowedModules": ["pg", "neo4j-driver", "amqplib"],
+  "enterprise": {
+    "enabled": false
+  }
+}

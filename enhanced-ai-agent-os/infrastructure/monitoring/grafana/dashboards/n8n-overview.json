@@ -1,0 +1,27 @@
+{
+  "title": "n8n Overview",
+  "uid": "n8n-overview",
+  "tags": ["n8n", "ai-agent"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "n8n Target Up",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "up{job='n8n'}", "legendFormat": "{{instance}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Workflow Execution Duration (p95)",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(n8n_workflow_execution_duration_seconds_bucket[5m])) by (le))"}
+      ]
+    }
+  ]
+}

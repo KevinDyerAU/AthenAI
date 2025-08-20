@@ -1,0 +1,199 @@
+version: "3.9"
+
+# Enhanced AI Agent OS - Production Override Configuration
+# Use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  # Production PostgreSQL Configuration
+  postgres:
+    environment:
+      POSTGRES_MAX_CONNECTIONS: 500
+      POSTGRES_SHARED_BUFFERS: 512MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 4GB
+      POSTGRES_WORK_MEM: 16MB
+      POSTGRES_MAINTENANCE_WORK_MEM: 256MB
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: 0.9
+      POSTGRES_WAL_BUFFERS: 16MB
+      POSTGRES_DEFAULT_STATISTICS_TARGET: 100
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4.0'
+        reservations:
+          memory: 4G
+          cpus: '2.0'
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+
+  # Production Neo4j Configuration
+  neo4j:
+    environment:
+      NEO4J_server_memory_heap_initial__size: 2G
+      NEO4J_server_memory_heap_max__size: 8G
+      NEO4J_server_memory_pagecache_size: 4G
+      NEO4J_server_query_cache_size: 100M
+      NEO4J_server_jvm_additional: >-
+        -XX:+UseG1GC 
+        -XX:+UnlockExperimentalVMOptions 
+        -XX:G1HeapRegionSize=16m 
+        -XX:G1NewSizePercent=30 
+        -XX:G1MaxNewSizePercent=50
+      NEO4J_server_logs_query_threshold: 5s
+      NEO4J_server_logs_query_parameter__logging__enabled: false
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+          cpus: '6.0'
+        reservations:
+          memory: 8G
+          cpus: '4.0'
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+        max_attempts: 3
+        window: 300s
+
+  # Production RabbitMQ Configuration
+  rabbitmq:
+    environment:
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: 0.6
+      RABBITMQ_DISK_FREE_LIMIT: 10GB
+      RABBITMQ_CHANNEL_MAX: 2048
+      RABBITMQ_CONNECTION_MAX: 1000
+      RABBITMQ_HEARTBEAT: 30
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+      restart_policy:
+        condition: on-failure
+        delay: 15s
+        max_attempts: 3
+        window: 180s
+
+  # Production n8n Configuration
+  n8n:
+    environment:
+      N8N_EXECUTIONS_PROCESS: own
+      N8N_EXECUTIONS_TIMEOUT: 7200
+      N8N_EXECUTIONS_TIMEOUT_MAX: 14400
+      N8N_EXECUTIONS_DATA_MAX_AGE: 168
+      N8N_LOG_LEVEL: warn
+      N8N_SECURE_COOKIE: true
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=4096
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4.0'
+        reservations:
+          memory: 4G
+          cpus: '2.0'
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+        max_attempts: 3
+        window: 300s
+
+  # Production Prometheus Configuration
+  prometheus:
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=90d'
+      - '--storage.tsdb.retention.size=50GB'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      - '--web.external-url=https://monitoring.yourdomain.com/prometheus'
+      - '--web.route-prefix=/prometheus'
+      - '--storage.tsdb.wal-compression'
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+
+  # Production Grafana Configuration
+  grafana:
+    environment:
+      GF_SERVER_PROTOCOL: https
+      GF_SERVER_DOMAIN: monitoring.yourdomain.com
+      GF_SERVER_ROOT_URL: https://monitoring.yourdomain.com/grafana
+      GF_SERVER_SERVE_FROM_SUB_PATH: true
+      GF_SECURITY_COOKIE_SECURE: true
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_SESSION_COOKIE_SECURE: true
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: false
+      GF_ANALYTICS_REPORTING_ENABLED: false
+      GF_ANALYTICS_CHECK_FOR_UPDATES: false
+      GF_LOG_LEVEL: warn
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  # Enable Nginx for Production
+  nginx:
+    profiles: []  # Remove from profiles to enable by default
+    environment:
+      NGINX_WORKER_PROCESSES: auto
+      NGINX_WORKER_CONNECTIONS: 1024
+      NGINX_KEEPALIVE_TIMEOUT: 65
+      NGINX_CLIENT_MAX_BODY_SIZE: 100M
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+# Production-specific volumes with optimized settings
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noatime
+      device: /opt/enhanced-ai-agent-os/data/postgres
+
+  neo4j_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noatime
+      device: /opt/enhanced-ai-agent-os/data/neo4j/data
+
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noatime
+      device: /opt/enhanced-ai-agent-os/data/prometheus
+
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noatime
+      device: /opt/enhanced-ai-agent-os/data/grafana

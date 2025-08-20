@@ -1,0 +1,11 @@
+groups:
+  - name: ai-agent-general
+    rules:
+      - alert: N8nDown
+        expr: up{job="n8n"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "n8n instance is down"
+          description: "n8n scrape target has been down for more than 2 minutes."
