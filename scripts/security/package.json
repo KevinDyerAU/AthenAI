@@ -1,0 +1,12 @@
+{
+  "name": "security-tools",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "scripts": {
+    "validate:rbac": "node validate-rbac.js"
+  }
+}

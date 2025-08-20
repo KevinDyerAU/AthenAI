@@ -1,0 +1,89 @@
+name: CI Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq apache2-utils curl
+          # k6 optional
+          curl -sSL https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.deb -o /tmp/k6.deb || true
+          sudo dpkg -i /tmp/k6.deb || true
+
+      - name: Prepare env
+        run: |
+          cp .env.development.example .env || true
+
+      - name: Install security tool deps
+        run: |
+          cd scripts/security
+          npm ci || npm install
+        shell: bash
+
+      - name: Validate RBAC policies
+        run: |
+          node validate-rbac.js
+        shell: bash
+        working-directory: scripts/security
+
+      - name: Run Unit & Integration tests
+        run: |
+          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category unit --results-dir ./test-results
+          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category integration --results-dir ./test-results
+
+      - name: Start n8n (for e2e/performance) (optional)
+        run: |
+          docker run -d --name n8n -p 5678:5678 -e N8N_PORT=5678 -e N8N_PROTOCOL=http -e N8N_HOST=0.0.0.0 -e N8N_BASE_URL=http://localhost:5678 n8nio/n8n:latest
+        shell: bash
+
+      - name: Wait for n8n
+        run: |
+          for i in {1..20}; do curl -fsS http://localhost:5678 && break || sleep 3; done || true
+
+      - name: Run E2E & Performance tests
+        env:
+          N8N_BASE_URL: http://localhost:5678
+        run: |
+          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category e2e --results-dir ./test-results || true
+          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category performance --results-dir ./test-results || true
+
+      - name: Security scan - Trivy (containers)
+        run: |
+          bash tests/security/trivy-scan.sh || true
+        shell: bash
+
+      - name: Security scan - ZAP baseline (n8n)
+        env:
+          TARGET_URL: http://localhost:5678
+        run: |
+          bash tests/security/zap-scan.sh || true
+        shell: bash
+
+      - name: AI capability tests (non-fatal)
+        run: |
+          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category ai --results-dir ./test-results || true
+
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: |
+            test-results
+            zap-report.html

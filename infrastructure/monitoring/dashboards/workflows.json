@@ -1,0 +1,29 @@
+{
+  "title": "Workflow Execution Metrics",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Executions by Workflow",
+      "targets": [{ "expr": "sum by(workflow_name,status)(rate(workflow_execution_total[5m]))" }],
+      "yaxes": [{"format":"ops"},{"format":"short"}]
+    },
+    {
+      "type": "stat",
+      "title": "Success Rate (5m)",
+      "targets": [{ "expr": "sum(rate(workflow_execution_total{status=\"success\"}[5m])) / sum(rate(workflow_execution_total[5m]))" }],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}}
+    },
+    {
+      "type": "graph",
+      "title": "Execution Duration p95 (s)",
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le,workflow_name) (rate(workflow_execution_duration_seconds_bucket[5m])))" }]
+    },
+    {
+      "type": "graph",
+      "title": "Node Errors",
+      "targets": [{ "expr": "sum by(workflow_id,node_type)(rate(workflow_node_error_total[5m]))" }]
+    }
+  ],
+  "schemaVersion": 36
+}

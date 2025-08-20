@@ -1,0 +1,38 @@
+groups:
+  - name: security.rules
+    rules:
+      - alert: HighRateOf4xx
+        expr: rate(nginx_http_requests_total{status=~"4.."}[5m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: High rate of client errors (4xx)
+          description: A sustained increase in 4xx responses may indicate auth issues or probing.
+
+      - alert: HighRateOf5xx
+        expr: rate(nginx_http_requests_total{status=~"5.."}[5m]) > 1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: High rate of server errors (5xx)
+          description: Persistent 5xx responses could indicate vulnerability exploitation or outages.
+
+      - alert: ExcessiveRateLimitedRequests
+        expr: rate(nginx_http_requests_limited_total[5m]) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Excessive rate-limited requests detected
+          description: Requests are frequently hitting the rate limiter; may indicate scraping or abuse.
+
+      - alert: SuspiciousAuthFailures
+        expr: rate(auth_failed_total[5m]) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Elevated authentication failures
+          description: Track spikes in auth_failed_total to detect brute-force or credential stuffing.

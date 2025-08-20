@@ -1,0 +1,39 @@
+{
+  "title": "Knowledge Graph Health",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "KG Nodes (total)",
+      "targets": [{ "expr": "sum(kg_nodes_total)" }]
+    },
+    {
+      "type": "stat",
+      "title": "KG Edges (total)",
+      "targets": [{ "expr": "sum(kg_edges_total)" }]
+    },
+    {
+      "type": "graph",
+      "title": "Nodes by Label",
+      "targets": [{ "expr": "sum by(label)(kg_nodes_total)" }]
+    },
+    {
+      "type": "graph",
+      "title": "Edges by Type",
+      "targets": [{ "expr": "sum by(type)(kg_edges_total)" }]
+    },
+    {
+      "type": "graph",
+      "title": "KG Growth (24h)",
+      "targets": [
+        { "expr": "increase(kg_nodes_total[24h])", "legendFormat": "nodes+24h" },
+        { "expr": "increase(kg_edges_total[24h])", "legendFormat": "edges+24h" }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Update Errors",
+      "targets": [{ "expr": "sum by(operation)(rate(kg_update_errors_total[5m]))" }]
+    }
+  ],
+  "schemaVersion": 36
+}

@@ -1,0 +1,52 @@
+# RBAC Policies
+# Define roles and their permissions over resources and actions.
+# Example resources: workflows, agents, datasets, admin, monitoring
+
+version: 1
+roles:
+  - name: admin
+    description: Full administrative access
+    allow:
+      - resource: "*"
+        actions: ["*"]
+
+  - name: operator
+    description: Operate and monitor the system
+    allow:
+      - resource: workflows
+        actions: ["read", "execute", "cancel"]
+      - resource: agents
+        actions: ["read", "invoke"]
+      - resource: monitoring
+        actions: ["read"]
+      - resource: datasets
+        actions: ["read"]
+
+  - name: developer
+    description: Build and test workflows and agents
+    allow:
+      - resource: workflows
+        actions: ["read", "create", "update", "execute"]
+      - resource: agents
+        actions: ["read", "invoke"]
+      - resource: datasets
+        actions: ["read", "write"]
+
+  - name: viewer
+    description: Read-only visibility
+    allow:
+      - resource: workflows
+        actions: ["read"]
+      - resource: agents
+        actions: ["read"]
+      - resource: datasets
+        actions: ["read"]
+      - resource: monitoring
+        actions: ["read"]
+
+# Optional: explicit denies override allows
+# denies:
+#   - role: developer
+#     rules:
+#       - resource: admin
+#         actions: ["*"]

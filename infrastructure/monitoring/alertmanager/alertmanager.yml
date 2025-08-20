@@ -1,0 +1,12 @@
+route:
+  receiver: dev-null
+  group_by: ['alertname','agent','workflow_name','instance']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: dev-null
+    webhook_configs: []
+
+# Configure real receivers (Slack, email, PagerDuty) here and update route.

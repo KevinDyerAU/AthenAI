@@ -1,0 +1,76 @@
+{
+  "id": null,
+  "uid": "security-overview",
+  "title": "Security Overview",
+  "tags": ["security", "monitoring"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "4xx Error Rate",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_total{status=~\"4..\"}[5m]))",
+          "legendFormat": "4xx rate"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx Error Rate",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_total{status=~\"5..\"}[5m]))",
+          "legendFormat": "5xx rate"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Rate-Limited Requests (5m)",
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_http_requests_limited_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Auth Failures (5m)",
+      "gridPos": { "x": 6, "y": 8, "w": 6, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum(rate(auth_failed_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Auth Failures Rate",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum by (job) (rate(auth_failed_total[5m]))",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Firing Alerts",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "ALERTS{alertstate=\"firing\"}"
+        }
+      ],
+      "columns": []
+    }
+  ]
+}

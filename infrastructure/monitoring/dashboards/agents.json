@@ -1,0 +1,59 @@
+{
+  "__inputs": [],
+  "title": "AI Agents Performance",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Requests by Agent",
+      "targets": [
+        {"expr": "sum by(agent)(rate(ai_agent_request_total[5m]))"}
+      ],
+      "yaxes": [{"format":"ops","label":"req/s"},{"format":"short"}]
+    },
+    {
+      "type": "heatmap",
+      "title": "Latency Distribution (s)",
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (le,agent) (rate(ai_agent_latency_seconds_bucket[5m])))"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "p95 Latency (s) by Agent",
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (le,agent) (rate(ai_agent_latency_seconds_bucket[5m])))"}
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Token Usage by Provider",
+      "targets": [
+        {"expr": "sum by(provider,token_type)(rate(ai_model_tokens_total[5m]))"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Estimated Cost (USD/min)",
+      "targets": [
+        {"expr": "sum(rate(ai_model_cost_usd_total[5m]))"}
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Model Errors",
+      "targets": [
+        {"expr": "sum by(provider,error_code)(rate(ai_model_error_total[5m]))"}
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Response Quality Score",
+      "targets": [
+        {"expr": "avg by(agent)(ai_response_quality_score)"}
+      ],
+      "yaxes": [{"format":"percentunit"},{"format":"short"}]
+    }
+  ],
+  "templating": {"list": []},
+  "schemaVersion": 36
+}

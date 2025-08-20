@@ -1,0 +1,117 @@
+groups:
+  - name: ai-agents-alerts
+    rules:
+      # High latency p95 per agent
+      - alert: AIAgentHighLatencyP95
+        expr: histogram_quantile(0.95, sum by (le,agent) (rate(ai_agent_latency_seconds_bucket[5m]))) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency for AI agent"
+          description: "Agent {{ $labels.agent }} p95 latency > 2s for 10m."
+
+      - alert: AIAgentHighLatencyP95Critical
+        expr: histogram_quantile(0.95, sum by (le,agent) (rate(ai_agent_latency_seconds_bucket[5m]))) > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical p95 latency for AI agent"
+          description: "Agent {{ $labels.agent }} p95 latency > 5s for 5m."
+
+      # Error rate per agent
+      - alert: AIAgentErrorRateHigh
+        expr: sum by(agent) (rate(ai_agent_request_total{status="error"}[5m])) / clamp_min(sum by(agent) (rate(ai_agent_request_total[5m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI agent error rate high"
+          description: "Agent {{ $labels.agent }} error rate > 5% for 10m."
+
+      - alert: AIAgentErrorRateCritical
+        expr: sum by(agent) (rate(ai_agent_request_total{status="error"}[5m])) / clamp_min(sum by(agent) (rate(ai_agent_request_total[5m])), 1) > 0.15
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AI agent error rate critical"
+          description: "Agent {{ $labels.agent }} error rate > 15% for 5m."
+
+      # Model API errors by provider
+      - alert: AIModelProviderErrors
+        expr: sum by(provider) (rate(ai_model_error_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model provider errors observed"
+          description: "Provider {{ $labels.provider }} error rate > 0.1/s for 10m."
+
+      # Workflow success rate
+      - alert: WorkflowSuccessRateDrop
+        expr: 1 - (sum(rate(workflow_execution_total{status="success"}[15m])) / clamp_min(sum(rate(workflow_execution_total[15m])), 1)) > 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Workflow success rate degraded"
+          description: "Success rate below 80% for 15m."
+
+      # Node error spikes
+      - alert: WorkflowNodeErrorsSpiking
+        expr: sum(rate(workflow_node_error_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Workflow node errors spiking"
+          description: "Node error rate > 1/s for 10m."
+
+      # Knowledge graph health
+      - alert: KnowledgeGraphNoGrowth
+        expr: increase(kg_nodes_total[24h]) < 1 and increase(kg_edges_total[24h]) < 1
+        for: 24h
+        labels:
+          severity: info
+        annotations:
+          summary: "Knowledge graph not growing"
+          description: "No significant growth in nodes/edges over 24h."
+
+      - alert: KnowledgeGraphUpdateErrors
+        expr: sum(rate(kg_update_errors_total[5m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Knowledge graph update errors"
+          description: "Errors seen updating knowledge graph for 15m."
+
+      # Capacity alerts
+      - alert: CPUHighUtilization
+        expr: avg by(instance) (system_capacity_cpu_utilization) > 0.85
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU utilization"
+          description: "Instance {{ $labels.instance }} CPU > 85% for 15m."
+
+      - alert: MemoryHighUtilization
+        expr: avg by(instance) (system_capacity_memory_utilization) > 0.9
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory utilization"
+          description: "Instance {{ $labels.instance }} memory > 90% for 15m."
+
+      - alert: QueueDepthHigh
+        expr: max by(queue) (system_queue_depth) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue depth high"
+          description: "Queue {{ $labels.queue }} depth > 1000 for 10m."

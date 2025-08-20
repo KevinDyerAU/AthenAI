@@ -1,0 +1,12 @@
+{
+  "title": "Capacity & Utilization",
+  "panels": [
+    { "type": "stat", "title": "Avg CPU Utilization", "targets": [{"expr": "avg(system_capacity_cpu_utilization)"}], "fieldConfig": {"defaults": {"unit": "percentunit"}} },
+    { "type": "stat", "title": "Avg Memory Utilization", "targets": [{"expr": "avg(system_capacity_memory_utilization)"}], "fieldConfig": {"defaults": {"unit": "percentunit"}} },
+    { "type": "graph", "title": "CPU by Instance", "targets": [{"expr": "avg by(instance) (system_capacity_cpu_utilization)"}] },
+    { "type": "graph", "title": "Memory by Instance", "targets": [{"expr": "avg by(instance) (system_capacity_memory_utilization)"}] },
+    { "type": "graph", "title": "Queue Depth by Queue", "targets": [{"expr": "max by(queue) (system_queue_depth)"}] },
+    { "type": "stat", "title": "Projected Capacity (req/min)", "targets": [{"expr": "sum(rate(ai_agent_request_total[5m])) / clamp_min(sum(avg_over_time(ai_agent_latency_seconds_sum[5m]) / avg_over_time(ai_agent_latency_seconds_count[5m])), 0.001)"}] }
+  ],
+  "schemaVersion": 36
+}
