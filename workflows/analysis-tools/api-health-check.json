@@ -1,0 +1,26 @@
+{
+  "name": "API Health Check (Analysis)",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "id": "2",
+      "name": "HTTP Request - Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [260, 0],
+      "parameters": {
+        "url": "={{$env.API_BASE_URL}}/system/health",
+        "method": "GET",
+        "responseFormat": "json",
+        "ignoreResponseCode": true
+      }
+    }
+  ],
+  "connections": {"Start": {"main": [[{"node": "HTTP Request - Health","type": "main","index": 0}]]}}
+}

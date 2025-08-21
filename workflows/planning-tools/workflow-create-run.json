@@ -1,0 +1,29 @@
+{
+  "name": "Workflow Create and Run",
+  "nodes": [
+    {"id":"start","name":"Start","type":"n8n-nodes-base.start","typeVersion":1,"position":[0,0]},
+    {"id":"modelSelector","name":"Function - Model Selector","type":"n8n-nodes-base.function","typeVersion":2,"position":[120,-120],
+      "parameters":{"functionCode":"// Model Selector template\nconst item = items[0] || { json: {} };\nconst task = item.json.task || {};\nfunction pickModel(task){\n  const type = (task.type || '').toLowerCase();\n  switch(type){\n    case 'creative': return { provider: 'openai', model: $env.OPENAI_MODEL || 'gpt-4o', temperature: 0.9 };\n    case 'classification': return { provider: 'anthropic', model: $env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20240620', temperature: 0.2 };\n    case 'analysis':\n    default: return { provider: 'openai', model: $env.OPENAI_MODEL || 'gpt-4o-mini', temperature: 0.3 };\n  }\n}\nconst choice = pickModel(task);\nreturn [{ json: { ...item.json, model: { provider: choice.provider, name: choice.model, temperature: choice.temperature } } }];"}},
+    {"id":"register","name":"HTTP Request - Register","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[240,-120],
+      "parameters":{"url":"={{$env.API_BASE_URL}}/auth/register","method":"POST","jsonParameters":true,
+        "options":{"ignoreResponseCode":true},
+        "bodyParametersJson":"={\n  \"email\": \"planner+{{$now}}@example.com\",\n  \"password\": \"Test1234!\"\n}"}},
+    {"id":"login","name":"HTTP Request - Login","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[500,-120],
+      "parameters":{"url":"={{$env.API_BASE_URL}}/auth/login","method":"POST","jsonParameters":true,
+        "bodyParametersJson":"={\n  \"email\": \"={{$json[\"body\"].email}}\",\n  \"password\": \"Test1234!\"\n}"}},
+    {"id":"createWf","name":"HTTP Request - Create Workflow","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[760,-120],
+      "parameters":{"url":"={{$env.API_BASE_URL}}/workflows","method":"POST","jsonParameters":true,
+        "options":{"headersParametersJson":"={\n  \"Authorization\": \"Bearer {{$node[\"HTTP Request - Login\"].json.access_token}}\"\n}"},
+        "bodyParametersJson":"={\n  \"name\": \"n8n-workflow-{{$now}}\",\n  \"definition\": {\n    \"steps\": [\n      {\"id\": 1, \"op\": \"noop\"}\n    ]\n  }\n}"}},
+    {"id":"runWf","name":"HTTP Request - Run Workflow","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1020,-120],
+      "parameters":{"url":"={{$env.API_BASE_URL}}/workflows/{{$node[\"HTTP Request - Create Workflow\"].json.id}}/run","method":"POST",
+        "options":{"headersParametersJson":"={\n  \"Authorization\": \"Bearer {{$node[\"HTTP Request - Login\"].json.access_token}}\"\n}"}}}
+  ],
+  "connections": {
+    "Start": {"main":[[{"node":"Function - Model Selector","type":"main","index":0}]]},
+    "Function - Model Selector": {"main":[[{"node":"HTTP Request - Register","type":"main","index":0}]]},
+    "HTTP Request - Register": {"main":[[{"node":"HTTP Request - Login","type":"main","index":0}]]},
+    "HTTP Request - Login": {"main":[[{"node":"HTTP Request - Create Workflow","type":"main","index":0}]]},
+    "HTTP Request - Create Workflow": {"main":[[{"node":"HTTP Request - Run Workflow","type":"main","index":0}]]}
+  }
+}

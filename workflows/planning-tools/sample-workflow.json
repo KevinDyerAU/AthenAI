@@ -1,0 +1,7 @@
+{
+  "name": "Sample Planning Workflow",
+  "nodes": [
+    { "id": "1", "name": "Start", "type": "n8n-nodes-base.start", "typeVersion": 1, "position": [0,0] }
+  ],
+  "connections": {}
+}

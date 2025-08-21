@@ -1,0 +1,29 @@
+{
+  "name": "Agent Create and Execute",
+  "nodes": [
+    {"id":"start","name":"Start","type":"n8n-nodes-base.start","typeVersion":1,"position":[0,0]},
+    {"id":"modelSelector","name":"Function - Model Selector","type":"n8n-nodes-base.function","typeVersion":2,"position":[120,-120],
+      "parameters":{"functionCode":"// Model Selector template\nconst item = items[0] || { json: {} };\nconst task = item.json.task || {};\nfunction pickModel(task){\n  const type = (task.type || '').toLowerCase();\n  switch(type){\n    case 'creative': return { provider: 'openai', model: $env.OPENAI_MODEL || 'gpt-4o', temperature: 0.9 };\n    case 'classification': return { provider: 'anthropic', model: $env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20240620', temperature: 0.2 };\n    case 'analysis':\n    default: return { provider: 'openai', model: $env.OPENAI_MODEL || 'gpt-4o-mini', temperature: 0.3 };\n  }\n}\nconst choice = pickModel(task);\nreturn [{ json: { ...item.json, model: { provider: choice.provider, name: choice.model, temperature: choice.temperature } } }];"}},
+    {"id":"register","name":"HTTP Request - Register","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[260,-120],
+      "parameters":{"url":"={{$env.API_BASE_URL}}/auth/register","method":"POST","jsonParameters":true,
+        "options":{"ignoreResponseCode":true},
+        "bodyParametersJson":"={\n  \"email\": \"user+{{$now}}@example.com\",\n  \"password\": \"Test1234!\"\n}"}},
+    {"id":"login","name":"HTTP Request - Login","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[520,-120],
+      "parameters":{"url":"={{$env.API_BASE_URL}}/auth/login","method":"POST","jsonParameters":true,
+        "bodyParametersJson":"={\n  \"email\": \"={{$json[\"body\"].email}}\",\n  \"password\": \"Test1234!\"\n}"}},
+    {"id":"createAgent","name":"HTTP Request - Create Agent","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[780,-120],
+      "parameters":{"url":"={{$env.API_BASE_URL}}/agents","method":"POST","jsonParameters":true,
+        "options":{"headersParametersJson":"={\n  \"Authorization\": \"Bearer {{$node[\"HTTP Request - Login\"].json.access_token}}\"\n}"},
+        "bodyParametersJson":"={\n  \"name\": \"n8n-agent-{{$now}}\",\n  \"type\": \"analysis\"\n}"}},
+    {"id":"executeAgent","name":"HTTP Request - Execute Agent","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1040,-120],
+      "parameters":{"url":"={{$env.API_BASE_URL}}/agents/{{$node[\"HTTP Request - Create Agent\"].json.id}}/execute","method":"POST",
+        "options":{"headersParametersJson":"={\n  \"Authorization\": \"Bearer {{$node[\"HTTP Request - Login\"].json.access_token}}\"\n}"}}}
+  ],
+  "connections": {
+    "Start": {"main":[[{"node":"Function - Model Selector","type":"main","index":0}]]},
+    "Function - Model Selector": {"main":[[{"node":"HTTP Request - Register","type":"main","index":0}]]},
+    "HTTP Request - Register": {"main":[[{"node":"HTTP Request - Login","type":"main","index":0}]]},
+    "HTTP Request - Login": {"main":[[{"node":"HTTP Request - Create Agent","type":"main","index":0}]]},
+    "HTTP Request - Create Agent": {"main":[[{"node":"HTTP Request - Execute Agent","type":"main","index":0}]]}
+  }
+}
