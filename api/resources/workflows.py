@@ -4,6 +4,8 @@ from flask_jwt_extended import jwt_required
 from ..extensions import db
 from ..models import Workflow
 from ..schemas import WorkflowSchema, WorkflowCreateSchema, WorkflowUpdateSchema, WorkflowRunSchema
+from ..utils.audit import audit_event
+from ..utils.n8n_client import trigger_webhook
 
 ns = Namespace("workflows", description="Workflow management endpoints")
 
@@ -90,10 +92,16 @@ class WorkflowItem(Resource):
 class WorkflowRun(Resource):
     @jwt_required()
     def post(self, wf_id: int):
-        # TODO: integrate with n8n to trigger workflow execution
         wf = Workflow.query.get_or_404(wf_id)
         wf.status = "queued"
         db.session.commit()
+        # Trigger n8n webhook
+        payload = {"workflow_id": wf.id, "name": wf.name}
+        try:
+            trigger_webhook("webhook/workflow-run", payload)
+            audit_event("workflow.run.queued", payload, None)
+        except Exception as e:
+            audit_event("workflow.run.error", {"workflow_id": wf.id, "error": str(e)}, None)
         return {"message": "Workflow queued", "workflow_id": wf.id}, 202
 
 

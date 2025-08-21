@@ -1,0 +1,12 @@
+{
+  "name": "Workflow Run - Receiver",
+  "nodes": [
+    {"id":"webhook","name":"Webhook - Workflow Run","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[-40,0],
+      "parameters":{"httpMethod":"POST","path":"workflow-run","responseMode":"lastNode","options":{"responseCode":200}}},
+    {"id":"function","name":"Function - Parse Payload","type":"n8n-nodes-base.function","typeVersion":2,"position":[240,0],
+      "parameters":{"functionCode":"const item = items[0] || {json:{}};\nconst body = item.json || {};\nconst wf = { id: body.workflow_id, name: body.name };\nreturn [{ json: { ok: true, received: wf } }];"}}
+  ],
+  "connections": {
+    "Webhook - Workflow Run": {"main":[[{"node":"Function - Parse Payload","type":"main","index":0}]]}
+  }
+}

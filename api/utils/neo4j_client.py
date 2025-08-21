@@ -14,6 +14,30 @@ class Neo4jClient:
         with self._driver.session() as session:
             return list(session.run(query, parameters or {}))
 
+    def read_tx(self, fn, *args, **kwargs):
+        """Execute a read transaction with a callback(tx, *args, **kwargs). Returns callback result."""
+        with self._driver.session(default_access_mode="READ") as session:
+            return session.execute_read(fn, *args, **kwargs)
+
+    def write_tx(self, fn, *args, **kwargs):
+        """Execute a write transaction with a callback(tx, *args, **kwargs). Returns callback result."""
+        with self._driver.session(default_access_mode="WRITE") as session:
+            return session.execute_write(fn, *args, **kwargs)
+
+    def run_queries_atomic(self, queries: list[tuple[str, dict | None]]):
+        """Run multiple Cypher statements atomically in a single write transaction.
+        queries: list of (query, parameters)
+        Returns list of list of records for each query.
+        """
+        def _runner(tx):
+            results = []
+            for q, p in queries:
+                res = tx.run(q, (p or {}))
+                results.append(list(res))
+            return results
+        with self._driver.session(default_access_mode="WRITE") as session:
+            return session.execute_write(_runner)
+
 
 def get_client() -> Neo4jClient:
     cfg = get_config()

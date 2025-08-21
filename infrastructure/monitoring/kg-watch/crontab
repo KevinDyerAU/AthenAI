@@ -1,0 +1,2 @@
+# Run KG integrity watcher every minute; direct output to stdout/cron.log
+* * * * * cd /app && python scripts/monitoring/kg_integrity_watch.py >> /var/log/cron.log 2>&1

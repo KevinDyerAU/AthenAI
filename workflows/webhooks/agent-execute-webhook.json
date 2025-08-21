@@ -1,0 +1,12 @@
+{
+  "name": "Agent Execute - Receiver",
+  "nodes": [
+    {"id":"webhook","name":"Webhook - Agent Execute","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[-40,0],
+      "parameters":{"httpMethod":"POST","path":"agent-execute","responseMode":"lastNode","options":{"responseCode":200}}},
+    {"id":"function","name":"Function - Parse Payload","type":"n8n-nodes-base.function","typeVersion":2,"position":[240,0],
+      "parameters":{"functionCode":"const item = items[0] || {json:{}};\nconst body = item.json || {};\nconst agent = { id: body.agent_id, name: body.name, type: body.type };\nreturn [{ json: { ok: true, received: agent } }];"}}
+  ],
+  "connections": {
+    "Webhook - Agent Execute": {"main":[[{"node":"Function - Parse Payload","type":"main","index":0}]]}
+  }
+}

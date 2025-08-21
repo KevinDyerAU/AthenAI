@@ -9,6 +9,10 @@ from .resources.workflows import ns as workflows_ns
 from .resources.system import ns as system_ns
 from .resources.config_api import ns as config_ns
 from .resources.tools import ns as tools_ns
+from .resources.knowledge import ns as knowledge_ns
+from .resources.conversations import ns as conversations_ns
+from .resources.kg_admin import ns as kg_admin_ns
+from .resources.kg_consensus import ns as kg_consensus_ns
 from .ws.events import register_socketio_events
 from .errors import register_error_handlers
 from .security.jwt_callbacks import register_jwt_callbacks
@@ -33,6 +37,10 @@ def create_app() -> Flask:
     restx_api.add_namespace(system_ns)
     restx_api.add_namespace(config_ns)
     restx_api.add_namespace(tools_ns)
+    restx_api.add_namespace(knowledge_ns)
+    restx_api.add_namespace(conversations_ns)
+    restx_api.add_namespace(kg_admin_ns)
+    restx_api.add_namespace(kg_consensus_ns)
 
     # Socket.IO
     register_socketio_events(socketio)

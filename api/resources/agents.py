@@ -4,6 +4,8 @@ from flask_jwt_extended import jwt_required
 from ..extensions import db
 from ..models import Agent
 from ..schemas import AgentSchema, AgentCreateSchema, AgentUpdateSchema
+from ..utils.audit import audit_event
+from ..utils.n8n_client import trigger_webhook
 
 ns = Namespace("agents", description="Agent management endpoints")
 
@@ -92,10 +94,16 @@ class AgentItem(Resource):
 class AgentExecute(Resource):
     @jwt_required()
     def post(self, agent_id: int):
-        # TODO: integrate with real execution engine / n8n
         agent = Agent.query.get_or_404(agent_id)
         agent.status = "running"
         db.session.commit()
+        # Trigger n8n webhook (configure corresponding workflow to receive this)
+        payload = {"agent_id": agent.id, "name": agent.name, "type": agent.type}
+        try:
+            trigger_webhook("webhook/agent-execute", payload)
+            audit_event("agent.execute.queued", payload, None)
+        except Exception as e:
+            audit_event("agent.execute.error", {"agent_id": agent.id, "error": str(e)}, None)
         return {"message": "Execution started", "agent_id": agent.id}, 202
 
 
