@@ -769,7 +769,6 @@ services:
     volumes:
       - ./configs/monitoring/prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
-      - prometheus_config:/etc/prometheus/config
     networks:
       - enhanced-ai-network
     healthcheck:
@@ -987,8 +986,6 @@ volumes:
 
   # Monitoring Volumes
   prometheus_data:
-    driver: local
-  prometheus_config:
     driver: local
 
   grafana_data:
