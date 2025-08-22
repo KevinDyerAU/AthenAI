@@ -561,8 +561,6 @@ create_docker_compose() {
     header "Creating Docker Compose Configuration"
     
     cat > "$COMPOSE_FILE" << 'EOF'
-version: "3.9"
-
 # Enhanced AI Agent OS - Local Docker Compose Configuration
 # This file defines all services required for the Enhanced AI Agent OS
 
