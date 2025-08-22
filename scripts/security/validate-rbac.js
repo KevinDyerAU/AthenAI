@@ -2,7 +2,15 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 
-const policiesPath = path.resolve(process.cwd(), 'infrastructure/security/rbac/policies.yaml');
+const findRepoRoot = () => {
+  let currentDir = process.cwd();
+  while (currentDir !== '/' && !fs.existsSync(path.join(currentDir, '.git'))) {
+    currentDir = path.dirname(currentDir);
+  }
+  return currentDir;
+};
+
+const policiesPath = path.join(findRepoRoot(), 'infrastructure/security/rbac/policies.yaml');
 
 function fail(msg) {
   console.error(`[RBAC] Validation failed: ${msg}`);
