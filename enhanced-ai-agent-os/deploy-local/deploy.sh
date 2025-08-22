@@ -731,7 +731,7 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5678/healthz || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:5678/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

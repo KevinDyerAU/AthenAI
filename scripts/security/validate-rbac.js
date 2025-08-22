@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 
-const policiesPath = path.resolve(process.cwd(), 'infrastructure/security/rbac/policies.yaml');
+const policiesPath = path.resolve(process.cwd(), '../../infrastructure/security/rbac/policies.yaml');
 
 function fail(msg) {
   console.error(`[RBAC] Validation failed: ${msg}`);
