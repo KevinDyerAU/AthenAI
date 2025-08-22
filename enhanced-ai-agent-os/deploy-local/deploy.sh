@@ -49,6 +49,15 @@ header() {
     echo -e "${PURPLE}[PHASE]${NC} $1" | tee -a "$LOG_FILE"
 }
 
+# Wrapper to call Docker Compose v2 (docker compose) or v1 (docker-compose)
+docker_compose() {
+    if docker compose version --short >/dev/null 2>&1; then
+        docker compose "$@"
+    else
+        docker-compose "$@"
+    fi
+}
+
 # Display banner
 display_banner() {
     echo -e "${PURPLE}"
@@ -614,11 +623,11 @@ services:
     networks:
       - enhanced-ai-network
     healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -u neo4j -p ${NEO4J_AUTH#neo4j/} 'RETURN 1'"]
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:7474 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 180s
     deploy:
       resources:
         limits:
@@ -941,129 +950,53 @@ volumes:
   # Database Volumes
   postgres_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/data/postgres
   postgres_backups:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/backups/postgres
 
   # Neo4j Volumes
   neo4j_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/data/neo4j
   neo4j_logs:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/logs/neo4j
   neo4j_import:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/import/neo4j
   neo4j_plugins:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/plugins/neo4j
   neo4j_backups:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/backups/neo4j
 
   # RabbitMQ Volumes
   rabbitmq_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/data/rabbitmq
   rabbitmq_logs:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/logs/rabbitmq
   rabbitmq_backups:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/backups/rabbitmq
 
   # n8n Volumes
   n8n_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/data/n8n
   n8n_logs:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/logs/n8n
   n8n_backups:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/backups/n8n
 
   # Monitoring Volumes
   prometheus_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/data/prometheus
   prometheus_config:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/configs/monitoring/prometheus
 
   grafana_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/data/grafana
   grafana_logs:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/logs/grafana
 
   alertmanager_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/data/alertmanager
 
   loki_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/data/loki
 EOF
 
     success "Docker Compose configuration created successfully."
@@ -1110,9 +1043,17 @@ create_directory_structure() {
     done
     
     # Set appropriate permissions
-    chmod -R 755 "$SCRIPT_DIR/data"
-    chmod -R 755 "$SCRIPT_DIR/logs"
-    chmod -R 755 "$SCRIPT_DIR/backups"
+    # On Windows/WSL (NTFS mounts under /mnt/*), chmod may fail with "Operation not permitted".
+    # Attempt to set permissions, but do not fail the deployment if it's unsupported.
+    if ! chmod -R 755 "$SCRIPT_DIR/data" 2>/dev/null; then
+        warning "Skipping chmod on $SCRIPT_DIR/data (likely NTFS/WSL mount)."
+    fi
+    if ! chmod -R 755 "$SCRIPT_DIR/logs" 2>/dev/null; then
+        warning "Skipping chmod on $SCRIPT_DIR/logs (likely NTFS/WSL mount)."
+    fi
+    if ! chmod -R 755 "$SCRIPT_DIR/backups" 2>/dev/null; then
+        warning "Skipping chmod on $SCRIPT_DIR/backups (likely NTFS/WSL mount)."
+    fi
     
     success "Directory structure created successfully."
 }
@@ -1471,9 +1412,9 @@ pull_docker_images() {
     info "This may take several minutes depending on your internet connection..."
     
     # Pull images in parallel for faster download
-    docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull --parallel || {
+    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull --parallel || {
         warning "Parallel pull failed, trying sequential pull..."
-        docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull
+        docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull
     }
     
     success "Docker images pulled successfully."
@@ -1487,7 +1428,7 @@ deploy_services() {
     
     # Start foundation services first
     info "Starting foundation services (PostgreSQL, Neo4j, RabbitMQ)..."
-    docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d postgres neo4j rabbitmq
+    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d postgres neo4j rabbitmq
     
     # Wait for foundation services to be healthy
     info "Waiting for foundation services to be ready..."
@@ -1495,9 +1436,9 @@ deploy_services() {
     local wait_time=0
     
     while [ $wait_time -lt $max_wait ]; do
-        if docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps postgres | grep -q "healthy" && \
-           docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps neo4j | grep -q "healthy" && \
-           docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps rabbitmq | grep -q "healthy"; then
+        if docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps postgres | grep -q "healthy" && \
+           docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps neo4j | grep -q "healthy" && \
+           docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps rabbitmq | grep -q "healthy"; then
             success "Foundation services are ready."
             break
         fi
@@ -1513,13 +1454,13 @@ deploy_services() {
     
     # Start orchestration services
     info "Starting orchestration services (n8n)..."
-    docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d n8n
+    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d n8n
     
     # Wait for n8n to be ready
     info "Waiting for n8n to be ready..."
     wait_time=0
     while [ $wait_time -lt $max_wait ]; do
-        if docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps n8n | grep -q "healthy"; then
+        if docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps n8n | grep -q "healthy"; then
             success "n8n is ready."
             break
         fi
@@ -1531,12 +1472,12 @@ deploy_services() {
     
     # Start monitoring services
     info "Starting monitoring services..."
-    docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d prometheus grafana loki promtail alertmanager
+    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d prometheus grafana loki promtail alertmanager
     
     # Start node-exporter on Linux systems
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         info "Starting node-exporter (Linux only)..."
-        docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --profile linux up -d node-exporter
+        docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --profile linux up -d node-exporter
     fi
     
     success "All services deployed successfully."
@@ -1551,7 +1492,7 @@ verify_deployment() {
     local failed_services=()
     
     for service in "${services[@]}"; do
-        if ! docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps "$service" | grep -q "Up"; then
+        if ! docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps "$service" | grep -q "Up"; then
             failed_services+=($service)
         else
             info "Service $service is running."
@@ -1641,10 +1582,17 @@ display_summary() {
     echo "      • Check logs for any issues"
     echo ""
     echo -e "${CYAN}🔧 Management Commands:${NC}"
-    echo "   • View logs: docker-compose logs -f [service_name]"
-    echo "   • Stop services: docker-compose down"
-    echo "   • Restart services: docker-compose restart [service_name]"
-    echo "   • Check status: docker-compose ps"
+    if docker compose version --short >/dev/null 2>&1; then
+        echo "   • View logs: docker compose logs -f [service_name]"
+        echo "   • Stop services: docker compose down"
+        echo "   • Restart services: docker compose restart [service_name]"
+        echo "   • Check status: docker compose ps"
+    else
+        echo "   • View logs: docker-compose logs -f [service_name]"
+        echo "   • Stop services: docker-compose down"
+        echo "   • Restart services: docker-compose restart [service_name]"
+        echo "   • Check status: docker-compose ps"
+    fi
     echo ""
     echo -e "${CYAN}📚 Documentation:${NC}"
     echo "   • Configuration Guide: docs/configuration.md"
@@ -1661,7 +1609,11 @@ cleanup() {
         error "Deployment failed. Check the log file: $LOG_FILE"
         echo ""
         echo "To clean up and try again:"
-        echo "  docker-compose down -v"
+        if docker compose version --short >/dev/null 2>&1; then
+            echo "  docker compose down -v"
+        else
+            echo "  docker-compose down -v"
+        fi
         echo "  ./deploy.sh"
     fi
 }
