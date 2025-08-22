@@ -28,10 +28,14 @@ This script will automatically:
 ### Minimum Requirements
 - **Operating System:** Linux, macOS, or Windows with WSL2
 - **RAM:** 8GB (16GB recommended)
+  - For systems with 8GB RAM, the script automatically adjusts memory limits
+  - For systems with less than 8GB RAM, manual memory configuration may be required
 - **CPU:** 4 cores (8 cores recommended)
 - **Storage:** 20GB available space
 - **Docker:** Version 20.10 or later
 - **Docker Compose:** Version 2.0 or later
+
+**Note:** The deployment script automatically detects available system memory and adjusts service memory limits accordingly. On systems with limited RAM, Neo4j memory settings are automatically reduced to prevent startup failures.
 
 ### Recommended Requirements
 - **RAM:** 16GB or more for optimal performance
@@ -375,6 +379,44 @@ docker-compose logs service_name
 # Restart specific service
 docker-compose restart service_name
 ```
+
+### Neo4j Memory Configuration Issues
+
+If Neo4j fails to start with memory configuration errors:
+
+1. **Check available system memory**:
+   ```bash
+   free -h
+   ```
+
+2. **For systems with less than 8GB RAM**, the deployment script automatically adjusts memory limits, but you may need to manually reduce them further in the `.env` file:
+   ```bash
+   NEO4J_server_memory_heap_max__size=256m
+   NEO4J_server_memory_pagecache_size=128m
+   ```
+
+3. **Check Neo4j logs** for specific memory errors:
+   ```bash
+   docker compose logs neo4j
+   ```
+
+4. **Restart deployment** after adjusting memory settings:
+   ```bash
+   docker compose down -v
+   ./deploy.sh
+   ```
+
+### Service Startup Timeouts
+
+If services take longer than 5 minutes to start:
+
+1. **Check Docker resource limits** in Docker Desktop settings
+2. **Verify internet connectivity** for image downloads
+3. **Monitor system resources** during startup:
+   ```bash
+   htop
+   docker stats
+   ```
 
 For detailed troubleshooting, see `docs/troubleshooting.md`.
 

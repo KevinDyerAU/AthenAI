@@ -250,7 +250,9 @@ generate_environment_config() {
     
     # Determine resource limits based on available memory
     local postgres_memory="1g"
-    local neo4j_memory="2g"
+    local neo4j_memory="1g"
+    local neo4j_heap_memory="512m"
+    local neo4j_pagecache_memory="256m"
     local n8n_memory="1g"
     local prometheus_memory="1g"
     local grafana_memory="512m"
@@ -259,7 +261,9 @@ generate_environment_config() {
         local total_memory=$(free -m | awk 'NR==2{printf "%.0f", $2}')
         if [ "$total_memory" -lt 8192 ]; then
             postgres_memory="512m"
-            neo4j_memory="1g"
+            neo4j_memory="512m"
+            neo4j_heap_memory="256m"
+            neo4j_pagecache_memory="128m"
             n8n_memory="512m"
             prometheus_memory="512m"
             grafana_memory="256m"
@@ -362,10 +366,10 @@ POSTGRES_EFFECTIVE_CACHE_SIZE=1GB
 # Neo4j Configuration
 NEO4J_HOST=neo4j
 NEO4J_AUTH=neo4j/${neo4j_password}
-NEO4J_PLUGINS=["apoc", "graph-data-science"]
-NEO4J_dbms_memory_heap_initial__size=512m
-NEO4J_dbms_memory_heap_max__size=2g
-NEO4J_dbms_memory_pagecache_size=1g
+NEO4J_PLUGINS=["apoc"]
+NEO4J_server_memory_heap_initial__size=512m
+NEO4J_server_memory_heap_max__size=${neo4j_heap_memory}
+NEO4J_server_memory_pagecache_size=${neo4j_pagecache_memory}
 
 # =============================================================================
 # MESSAGE QUEUE CONFIGURATION
@@ -606,9 +610,9 @@ services:
     environment:
       NEO4J_AUTH: ${NEO4J_AUTH}
       NEO4J_PLUGINS: ${NEO4J_PLUGINS}
-      NEO4J_dbms_memory_heap_initial__size: ${NEO4J_dbms_memory_heap_initial__size}
-      NEO4J_dbms_memory_heap_max__size: ${NEO4J_dbms_memory_heap_max__size}
-      NEO4J_dbms_memory_pagecache_size: ${NEO4J_dbms_memory_pagecache_size}
+      NEO4J_server_memory_heap_initial__size: ${NEO4J_server_memory_heap_initial__size}
+      NEO4J_server_memory_heap_max__size: ${NEO4J_server_memory_heap_max__size}
+      NEO4J_server_memory_pagecache_size: ${NEO4J_server_memory_pagecache_size}
       NEO4J_dbms_security_procedures_unrestricted: apoc.*,gds.*
       NEO4J_dbms_security_procedures_allowlist: apoc.*,gds.*
     ports:
@@ -1450,6 +1454,10 @@ deploy_services() {
     
     if [ $wait_time -ge $max_wait ]; then
         error "Foundation services failed to start within $max_wait seconds."
+        info "Checking service logs for errors..."
+        docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs postgres neo4j rabbitmq | tail -20
+        error "Please check the logs above and system resources. You may need to adjust memory limits in the .env file."
+        return 1
     fi
     
     # Start orchestration services
