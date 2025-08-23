@@ -28,6 +28,70 @@ log() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1" | tee -a "$LOG_FILE"
 }
 
+# Parse CLI flags for strategy
+parse_cli_args() {
+    # Defaults
+    export SKIP_PULL=${SKIP_PULL:-false}
+    export FRESH_START=${FRESH_START:-false}
+    export STRATEGY_PRESET=${STRATEGY_PRESET:-false}
+    export DOCKER_UP_ARGS=${DOCKER_UP_ARGS:-}
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --reuse)
+                export SKIP_PULL=true
+                export FRESH_START=false
+                export DOCKER_UP_ARGS="--no-recreate"
+                export STRATEGY_PRESET=true
+                ;;
+            --fresh)
+                export SKIP_PULL=false
+                export FRESH_START=true
+                export DOCKER_UP_ARGS="--force-recreate"
+                export STRATEGY_PRESET=true
+                ;;
+            --)
+                shift; break ;;
+            *)
+                # ignore unknown flags for forward-compat
+                ;;
+        esac
+        shift
+    done
+}
+
+# Clean generated artifacts and data
+clean_workspace() {
+    header "Cleaning workspace (fresh start)"
+
+    # Compose down -v handled later as well, but stop early if running
+    if [ -f "$COMPOSE_FILE" ]; then
+        info "Bringing down any running stack..."
+        docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down -v || true
+    fi
+
+    # Remove generated files
+    local items=(
+        "$ENV_FILE"
+        "$COMPOSE_FILE"
+        "$SCRIPT_DIR/data"
+        "$SCRIPT_DIR/logs"
+        "$SCRIPT_DIR/backups"
+        "$SCRIPT_DIR/configs"
+        "$SCRIPT_DIR/examples/workflows"
+        "$SCRIPT_DIR/examples/dashboards"
+    )
+
+    for p in "${items[@]}"; do
+        if [ -e "$p" ]; then
+            info "Removing $p"
+            rm -rf "$p" || warning "Failed to remove $p; continuing"
+        fi
+    done
+
+    success "Workspace cleaned."
+}
+
 error() {
     echo -e "${RED}[ERROR]${NC} $1" | tee -a "$LOG_FILE"
     exit 1
@@ -47,6 +111,22 @@ info() {
 
 header() {
     echo -e "${PURPLE}[PHASE]${NC} $1" | tee -a "$LOG_FILE"
+}
+
+# Detect if running inside WSL
+is_wsl() {
+    grep -qi microsoft /proc/version 2>/dev/null
+}
+
+# Warn if working on slow WSL mount
+check_wsl_mount_performance() {
+    if is_wsl; then
+        local cwd
+        cwd=$(pwd)
+        if [[ "$cwd" == /mnt/* ]]; then
+            warning "WSL notice: Project is under /mnt (NTFS). IO can be slow. Consider cloning into ~/ (ext4) for better performance."
+        fi
+    fi
 }
 
 # Wrapper to call Docker Compose v2 (docker compose) or v1 (docker-compose)
@@ -122,6 +202,40 @@ check_system_requirements() {
             info "Docker Compose version: $compose_version"
         fi
     fi
+
+    # Check Docker engine resource allocations (memory, CPUs) and root disk space
+    if docker info >/dev/null 2>&1; then
+        # Memory assigned to Docker (bytes)
+        local docker_mem_bytes=$(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0)
+        if [[ "$docker_mem_bytes" =~ ^[0-9]+$ ]]; then
+            local docker_mem_gib=$(( docker_mem_bytes / 1024 / 1024 / 1024 ))
+            info "Docker assigned memory: ${docker_mem_gib}GiB"
+            if [ "$docker_mem_gib" -lt 6 ]; then
+                warning "Docker memory allocation appears below 6GiB. Consider increasing to 8GiB+ for smoother performance."
+            fi
+        fi
+
+        # CPUs assigned to Docker
+        local docker_cpus=$(docker info --format '{{.NCPU}}' 2>/dev/null || echo 0)
+        if [[ "$docker_cpus" =~ ^[0-9]+$ ]]; then
+            info "Docker assigned CPUs: ${docker_cpus}"
+            if [ "$docker_cpus" -lt 4 ]; then
+                warning "Docker CPU allocation is below 4 cores. Consider allocating 4+ cores."
+            fi
+        fi
+
+        # Disk space at Docker Root Dir
+        local docker_root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)
+        if [ -n "$docker_root" ] && [ -d "$docker_root" ]; then
+            local docker_root_space=$(df -BG "$docker_root" | awk 'NR==2 {print $4}' | sed 's/G//')
+            if [ -n "$docker_root_space" ]; then
+                info "Available disk at Docker Root Dir ($docker_root): ${docker_root_space}GB"
+                if [ "$docker_root_space" -lt 15 ]; then
+                    warning "Less than 15GB free at Docker Root Dir. Pulls and volume writes may fail. Free up space or move Docker data-root."
+                fi
+            fi
+        fi
+    fi
     
     # Check available memory
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
@@ -178,6 +292,9 @@ check_system_requirements() {
         error "System requirements not met. Please address the issues above and try again."
     fi
     
+    # WSL mount performance hint
+    check_wsl_mount_performance
+
     success "System requirements check completed successfully."
 }
 
@@ -252,6 +369,7 @@ generate_environment_config() {
     local postgres_memory="1g"
     local neo4j_memory="1g"
     local neo4j_heap_memory="512m"
+    local neo4j_heap_initial_memory="512m"
     local neo4j_pagecache_memory="256m"
     local n8n_memory="1g"
     local prometheus_memory="1g"
@@ -263,6 +381,7 @@ generate_environment_config() {
             postgres_memory="512m"
             neo4j_memory="512m"
             neo4j_heap_memory="256m"
+            neo4j_heap_initial_memory="256m"
             neo4j_pagecache_memory="128m"
             n8n_memory="512m"
             prometheus_memory="512m"
@@ -367,7 +486,7 @@ POSTGRES_EFFECTIVE_CACHE_SIZE=1GB
 NEO4J_HOST=neo4j
 NEO4J_AUTH=neo4j/${neo4j_password}
 NEO4J_PLUGINS=["apoc"]
-NEO4J_server_memory_heap_initial__size=512m
+NEO4J_server_memory_heap_initial__size=${neo4j_heap_initial_memory}
 NEO4J_server_memory_heap_max__size=${neo4j_heap_memory}
 NEO4J_server_memory_pagecache_size=${neo4j_pagecache_memory}
 
@@ -1404,9 +1523,60 @@ EOF
     success "Configuration files created successfully."
 }
 
+# Ask user how to handle existing containers/images
+ask_container_strategy() {
+    header "Container/Image Strategy"
+    echo ""
+    echo "You can either:"
+    echo "  1) Reuse existing images and containers (skip pulling, don't recreate)"
+    echo "  2) Update images and recreate containers (default)"
+    echo "  3) Fresh start (remove containers and volumes, then recreate)"
+    echo ""
+    # If flags already set a strategy, don't prompt
+    if [ "${STRATEGY_PRESET:-false}" = true ]; then
+        if [ "${FRESH_START:-false}" = true ]; then
+            warning "Using preset: Fresh start (from flag)."
+        elif [ "${SKIP_PULL:-false}" = true ]; then
+            info "Using preset: Reuse existing images/containers (from flag)."
+        else
+            info "Using preset: Update images and recreate containers (from flag)."
+        fi
+        return 0
+    fi
+
+    local choice
+    read -p "Choose an option [1/2/3] (default: 2): " choice
+    case "${choice}" in
+        1)
+            export SKIP_PULL=true
+            export FRESH_START=false
+            export DOCKER_UP_ARGS="--no-recreate"
+            info "Selected: Reuse existing images/containers (skip pull, no recreate)."
+            ;;
+        3)
+            export SKIP_PULL=false
+            export FRESH_START=true
+            export DOCKER_UP_ARGS="--force-recreate"
+            warning "Selected: Fresh start. Existing containers and volumes will be removed."
+            ;;
+        *)
+            export SKIP_PULL=false
+            export FRESH_START=false
+            export DOCKER_UP_ARGS="--force-recreate"
+            info "Selected: Update images and recreate containers."
+            ;;
+    esac
+}
+
 # Pull Docker images
 pull_docker_images() {
     header "Pulling Docker Images"
+    
+    # Allow skipping pull if user opted to reuse existing images
+    if [ "${SKIP_PULL:-false}" = true ]; then
+        info "Skipping image pull as per user selection."
+        return 0
+    fi
     
     info "This may take several minutes depending on your internet connection..."
     
@@ -1425,13 +1595,20 @@ deploy_services() {
     
     info "Starting services in dependency order..."
     
+    # Perform fresh start if requested
+    if [ "${FRESH_START:-false}" = true ]; then
+        warning "Stopping and removing existing containers and volumes (fresh start)..."
+        docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down -v || true
+    fi
+    
     # Start foundation services first
     info "Starting foundation services (PostgreSQL, Neo4j, RabbitMQ)..."
-    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d postgres neo4j rabbitmq
+    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d ${DOCKER_UP_ARGS:-} postgres neo4j rabbitmq
     
     # Wait for foundation services to be healthy
     info "Waiting for foundation services to be ready..."
-    local max_wait=300  # 5 minutes
+    # Increase default startup timeout by 50% for local deploys (300s -> 450s)
+    local max_wait=${STARTUP_TIMEOUT:-450}
     local wait_time=0
     
     while [ $wait_time -lt $max_wait ]; do
@@ -1457,7 +1634,7 @@ deploy_services() {
     
     # Start orchestration services
     info "Starting orchestration services (n8n)..."
-    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d n8n
+    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d ${DOCKER_UP_ARGS:-} n8n
     
     # Wait for n8n to be ready
     info "Waiting for n8n to be ready..."
@@ -1475,12 +1652,12 @@ deploy_services() {
     
     # Start monitoring services
     info "Starting monitoring services..."
-    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d prometheus grafana loki promtail alertmanager
+    docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d ${DOCKER_UP_ARGS:-} prometheus grafana loki promtail alertmanager
     
     # Start node-exporter on Linux systems
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         info "Starting node-exporter (Linux only)..."
-        docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --profile linux up -d node-exporter
+        docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --profile linux up -d ${DOCKER_UP_ARGS:-} node-exporter
     fi
     
     success "All services deployed successfully."
@@ -1631,8 +1808,15 @@ main() {
     
     display_banner
     check_root
+    # Parse flags and decide strategy early
+    parse_cli_args "$@"
     check_system_requirements
     check_port_availability
+    ask_container_strategy
+    # If fresh start requested, clean before generating anything
+    if [ "${FRESH_START:-false}" = true ]; then
+        clean_workspace
+    fi
     generate_environment_config
     create_docker_compose
     create_directory_structure

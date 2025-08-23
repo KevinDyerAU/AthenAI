@@ -14,6 +14,16 @@ For immediate deployment, run the one-click deployment script:
 
 ```bash
 ./deploy.sh
+
+# Optional non-interactive flags
+# Reuse existing images/containers (skip image pull, don't recreate)
+./deploy.sh --reuse
+
+# Fresh start: clean generated files/volumes and recreate
+./deploy.sh --fresh
+
+# Increase startup timeout (default 450s) if your machine is slow
+STARTUP_TIMEOUT=600 ./deploy.sh
 ```
 
 This script will automatically:
@@ -36,6 +46,19 @@ This script will automatically:
 - **Docker Compose:** Version 2.0 or later
 
 **Note:** The deployment script automatically detects available system memory and adjusts service memory limits accordingly. On systems with limited RAM, Neo4j memory settings are automatically reduced to prevent startup failures.
+
+### Automated Pre-flight Checks (performed by `deploy.sh`)
+
+- __Docker engine running__: verifies `docker info` succeeds.
+- __Docker Compose available__: supports both `docker compose` and `docker-compose`.
+- __Docker resource allocations__ (Docker Desktop/engine):
+  - Memory via `docker info` (`MemTotal`). Warns if < 6 GiB (recommend 8+ GiB).
+  - CPUs via `docker info` (`NCPU`). Warns if < 4 cores.
+- __Disk at Docker Root Dir__: checks free space where Docker stores images/volumes. Warns if < 15 GB.
+- __Host disk space at project path__: warns if < 20 GB free.
+- __Host memory/CPU__: warns if available memory < 4 GB or CPU cores < 4.
+- __Network connectivity__: pings out to verify downloads will work.
+- __WSL path performance__: if running under WSL and project is under `/mnt/*`, warns about slower IO and recommends cloning into `~/` (ext4) for better performance.
 
 ### Recommended Requirements
 - **RAM:** 16GB or more for optimal performance
@@ -151,7 +174,7 @@ chmod +x deploy.sh
 ```
 
 The script will:
-1. Check system requirements and dependencies
+1. Check system requirements and dependencies (including Docker allocations and disk at Docker Root Dir)
 2. Verify port availability and resolve conflicts
 3. Generate secure environment configuration
 4. Deploy services in dependency order
@@ -416,6 +439,11 @@ If services take longer than 5 minutes to start:
    ```bash
    htop
    docker stats
+   ```
+4. **Increase the startup timeout** used by the deploy script (default is 450 seconds):
+   ```bash
+   # Example: wait up to 10 minutes for services to become healthy
+   STARTUP_TIMEOUT=600 ./deploy.sh
    ```
 
 For detailed troubleshooting, see `docs/troubleshooting.md`.
