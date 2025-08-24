@@ -1,0 +1,35 @@
+groups:
+  - name: rabbitmq-alerts
+    rules:
+      - alert: RabbitMQQueueDepthHigh
+        expr: sum by (queue) (rabbitmq_queue_messages_ready) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ queue depth high (queue={{ $labels.queue }})"
+          description: |
+            The number of ready messages in queue {{ $labels.queue }} is high.
+            Investigate consumers and producers. Threshold: >1000 for 10m.
+
+      - alert: RabbitMQQueueDepthCritical
+        expr: sum by (queue) (rabbitmq_queue_messages_ready) > 5000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RabbitMQ queue depth critical (queue={{ $labels.queue }})"
+          description: |
+            The number of ready messages in queue {{ $labels.queue }} is critically high.
+            Consider scaling consumers or throttling producers. Threshold: >5000 for 5m.
+
+      - alert: RabbitMQConsumersLow
+        expr: sum by (queue) (rabbitmq_queue_consumers) < 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ consumers low (queue={{ $labels.queue }})"
+          description: |
+            Queue {{ $labels.queue }} has no active consumers for 5 minutes.
+            Ensure consumers are running and healthy.

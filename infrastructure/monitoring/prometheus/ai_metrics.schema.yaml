@@ -1,0 +1,84 @@
+# AI-specific and workflow execution custom metrics (Prometheus exposition names)
+# Use these names/labels across exporters and dashboards for consistency.
+
+families:
+  - name: ai_agent_request_total
+    type: counter
+    help: Total number of agent requests received
+    labels: [agent, endpoint, status]  # agent=planning|execution|qa, status=success|error
+
+  - name: ai_agent_latency_seconds
+    type: histogram
+    help: End-to-end agent processing latency
+    labels: [agent, endpoint]
+    buckets: [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10]
+
+  - name: ai_model_tokens_total
+    type: counter
+    help: Total LLM tokens used (prompt+completion)
+    labels: [agent, model, provider, token_type]  # token_type=prompt|completion|total
+
+  - name: ai_model_cost_usd_total
+    type: counter
+    help: Accumulated estimated cost in USD for model usage
+    labels: [agent, model, provider]
+
+  - name: ai_model_error_total
+    type: counter
+    help: Model/API errors encountered
+    labels: [agent, model, provider, error_code]
+
+  - name: ai_response_quality_score
+    type: gauge
+    help: Rolling quality score (0-1) from automated checks or user feedback
+    labels: [agent, evaluation]
+
+  - name: workflow_execution_total
+    type: counter
+    help: Number of workflow executions
+    labels: [workflow_id, workflow_name, status]  # status=success|error|timeout
+
+  - name: workflow_execution_duration_seconds
+    type: histogram
+    help: Workflow execution duration
+    labels: [workflow_id, workflow_name]
+    buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300]
+
+  - name: workflow_node_error_total
+    type: counter
+    help: Node-level error occurrences
+    labels: [workflow_id, node_type, error]
+
+  - name: kg_nodes_total
+    type: gauge
+    help: Knowledge graph node count
+    labels: [label]
+
+  - name: kg_edges_total
+    type: gauge
+    help: Knowledge graph edge count
+    labels: [type]
+
+  - name: kg_update_errors_total
+    type: counter
+    help: Knowledge graph update errors
+    labels: [operation]
+
+  - name: system_capacity_cpu_utilization
+    type: gauge
+    help: CPU utilization fraction
+    labels: [instance]
+
+  - name: system_capacity_memory_utilization
+    type: gauge
+    help: Memory utilization fraction
+    labels: [instance]
+
+  - name: system_queue_depth
+    type: gauge
+    help: Pending jobs/items in work queues
+    labels: [queue]
+
+notes:
+  - Token and cost metrics may be derived via provider usage responses or estimators.
+  - Response quality score can be fed by QA agent heuristics or CSAT.

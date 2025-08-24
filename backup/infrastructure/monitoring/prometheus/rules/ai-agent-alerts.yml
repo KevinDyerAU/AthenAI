@@ -1,0 +1,20 @@
+groups:
+  - name: ai-agent-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx error rate"
+          description: "> 1 req/s 5xx for 10m across observed targets."
+
+      - alert: RabbitMQNotReachable
+        expr: up{job="static-file-sd", instance=~"rabbitmq:.*"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ not reachable"
+          description: "RabbitMQ scrape target is down for 5m."

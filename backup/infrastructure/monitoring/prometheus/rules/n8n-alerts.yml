@@ -1,0 +1,19 @@
+groups:
+  - name: n8n-alerts
+    rules:
+      - alert: N8nDown
+        expr: up{job="n8n"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "n8n instance is down"
+          description: "n8n scrape target has been down for more than 2 minutes."
+      - alert: N8nHighExecutionTime
+        expr: histogram_quantile(0.95, sum(rate(n8n_workflow_execution_duration_seconds_bucket[5m])) by (le)) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "n8n high workflow execution time"
+          description: "95th percentile workflow execution time > 30s for 5m."

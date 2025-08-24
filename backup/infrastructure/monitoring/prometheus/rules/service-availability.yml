@@ -1,0 +1,47 @@
+groups:
+  - name: service-availability
+    rules:
+      - alert: ServiceDown_N8N
+        expr: up{job="n8n"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "n8n service is down (instance={{ $labels.instance }})"
+          description: "Prometheus target for n8n is down for over 2 minutes."
+
+      - alert: ServiceDown_RabbitMQ
+        expr: up{job="rabbitmq"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RabbitMQ service is down (instance={{ $labels.instance }})"
+          description: "Prometheus target for RabbitMQ is down for over 2 minutes."
+
+      - alert: ServiceDown_Loki
+        expr: up{job="loki"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loki service is down (instance={{ $labels.instance }})"
+          description: "Prometheus target for Loki is down for over 5 minutes."
+
+      - alert: ServiceDown_Promtail
+        expr: up{job="promtail"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Promtail agent is down (instance={{ $labels.instance }})"
+          description: "Prometheus target for Promtail is down for over 5 minutes."
+
+      - alert: ServiceDown_NodeExporter
+        expr: up{job="node-exporter"} == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node Exporter is down (instance={{ $labels.instance }})"
+          description: "Prometheus target for node-exporter is down for over 10 minutes (Linux hosts only)."

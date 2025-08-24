@@ -1,0 +1,642 @@
+version: "3.9"
+
+# Unified Docker Compose for NeoV3
+# - Base architecture from enhanced-ai-agent-os
+# - Adds API service from root /api
+# - Uses paths under enhanced-ai-agent-os/ for infrastructure, data, and logs
+
+services:
+  # =============================================================================
+  # PRIMARY DATABASE - PostgreSQL with pgvector
+  # =============================================================================
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: enhanced-ai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-enhanced_ai_os}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_agent_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS:---encoding=UTF-8 --lc-collate=C --lc-ctype=C}
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_MAX_CONNECTIONS: ${POSTGRES_MAX_CONNECTIONS:-200}
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-256MB}
+      POSTGRES_EFFECTIVE_CACHE_SIZE: ${POSTGRES_EFFECTIVE_CACHE_SIZE:-1GB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+      - postgres_backups:/backups
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_agent_user} -d ${POSTGRES_DB:-enhanced_ai_os}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - enhanced-ai-network
+      - agentnet
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # CONSCIOUSNESS SUBSTRATE - Neo4j Graph Database
+  # =============================================================================
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: enhanced-ai-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH}
+      NEO4J_PLUGINS: ${NEO4J_PLUGINS:-["apoc", "graph-data-science", "n10s"]}
+      NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_INITIAL_SIZE:-1G}
+      NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_MAX_SIZE:-2G}
+      NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE_SIZE:-1G}
+      NEO4J_server_query_cache_size: ${NEO4J_QUERY_CACHE_SIZE:-10M}
+      NEO4J_server_jvm_additional: ${NEO4J_JVM_ADDITIONAL:--XX:+UseG1GC -XX:+UnlockExperimentalVMOptions}
+      NEO4J_server_bolt_listen__address: 0.0.0.0:7687
+      NEO4J_server_http_listen__address: 0.0.0.0:7474
+      NEO4J_server_logs_debug_level: INFO
+      NEO4J_server_logs_query_enabled: true
+      NEO4J_server_logs_query_threshold: 1s
+      NEO4J_server_logs_query_parameter__logging__enabled: true
+      NEO4J_server_config_strict__validation_enabled: false
+      NEO4J_server_cypher_default__temporal__accessor: legacy
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+      - neo4j_plugins:/plugins
+      - ./infrastructure/neo4j/init:/docker-entrypoint-initdb.d:ro
+      - neo4j_backups:/backups
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p ${NEO4J_PASSWORD} 'RETURN 1' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  neo4j-init:
+    image: neo4j:5.15-community
+    container_name: enhanced-ai-neo4j-init
+    restart: "no"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+    volumes:
+      - ./infrastructure/neo4j/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - enhanced-ai-network
+    command: >
+      bash -lc "
+      until cypher-shell -a neo4j:7687 -u neo4j -p ${NEO4J_PASSWORD} 'RETURN 1' >/dev/null 2>&1; do
+        echo 'Waiting for Neo4j...'; sleep 5;
+      done;
+      cypher-shell -a neo4j:7687 -u neo4j -p ${NEO4J_PASSWORD} -f /docker-entrypoint-initdb.d/01-init.cypher;
+      echo 'Neo4j init completed.'
+      "
+
+  # =============================================================================
+  # MESSAGE QUEUE - RabbitMQ for Inter-Agent Communication
+  # =============================================================================
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: enhanced-ai-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-ai_agent_queue_user}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./infrastructure/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./infrastructure/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./infrastructure/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - rabbitmq_logs:/var/log/rabbitmq
+      - rabbitmq_backups:/backups
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+      - "${RABBITMQ_METRICS_PORT:-15692}:15692"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # ORCHESTRATION PLATFORM - n8n with Built-in AI Capabilities
+  # =============================================================================
+  n8n:
+    image: n8nio/n8n:1.64.0
+    container_name: enhanced-ai-n8n
+    restart: unless-stopped
+    environment:
+      N8N_HOST: ${N8N_HOST:-0.0.0.0}
+      N8N_PORT: ${N8N_PORT:-5678}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
+      DB_TYPE: ${N8N_DB_TYPE:-postgresdb}
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB:-enhanced_ai_os}
+      DB_POSTGRESDB_HOST: ${POSTGRES_HOST:-postgres}
+      DB_POSTGRESDB_PORT: ${POSTGRES_PORT:-5432}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-ai_agent_user}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_POSTGRESDB_SCHEMA: ${N8N_DB_POSTGRESDB_SCHEMA:-n8n}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678}
+      N8N_EDITOR_BASE_URL: ${WEBHOOK_URL:-http://localhost:5678}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
+      N8N_METRICS: ${N8N_METRICS:-true}
+      N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-info}
+      N8N_LOG_OUTPUT: ${N8N_LOG_OUTPUT:-console,file}
+      N8N_LOG_FILE_COUNT_MAX: ${N8N_LOG_FILE_COUNT_MAX:-100}
+      N8N_LOG_FILE_SIZE_MAX: ${N8N_LOG_FILE_SIZE_MAX:-16777216}
+      N8N_EXECUTIONS_PROCESS: ${N8N_EXECUTIONS_PROCESS:-main}
+      N8N_EXECUTIONS_TIMEOUT: ${N8N_EXECUTIONS_TIMEOUT:-3600}
+      N8N_EXECUTIONS_TIMEOUT_MAX: ${N8N_EXECUTIONS_TIMEOUT_MAX:-7200}
+      N8N_EXECUTIONS_DATA_SAVE_ON_ERROR: ${N8N_EXECUTIONS_DATA_SAVE_ON_ERROR:-all}
+      N8N_EXECUTIONS_DATA_SAVE_ON_SUCCESS: ${N8N_EXECUTIONS_DATA_SAVE_ON_SUCCESS:-all}
+      N8N_EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: ${N8N_EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS:-true}
+      N8N_EXECUTIONS_DATA_PRUNE: ${N8N_EXECUTIONS_DATA_PRUNE:-true}
+      N8N_EXECUTIONS_DATA_MAX_AGE: ${N8N_EXECUTIONS_DATA_MAX_AGE:-336}
+      N8N_AI_ENABLED: ${N8N_AI_ENABLED:-true}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+      OPENAI_ORGANIZATION: ${OPENAI_ORGANIZATION}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY}
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-true}
+      LANGCHAIN_ENDPOINT: ${LANGCHAIN_ENDPOINT}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT}
+      LANGCHAIN_SESSION: ${LANGCHAIN_SESSION}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: n8n
+      PUSHGATEWAY_URL: http://pushgateway:9091
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./infrastructure/n8n/config:/home/node/.n8n/config:ro
+      - ./workflows:/home/node/.n8n/workflows
+      - n8n_logs:/home/node/.n8n/logs
+      - n8n_backups:/backups
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # MONITORING - Prometheus, Grafana, Loki, Promtail, Alertmanager
+  # =============================================================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: enhanced-ai-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-30d}'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      - '--web.external-url=http://localhost:9090'
+      - '--web.route-prefix=/'
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - ./infrastructure/monitoring/alerts:/etc/prometheus/alerts:ro
+      - ./infrastructure/monitoring/prometheus/targets:/etc/prometheus/targets:ro
+      - prometheus_data:/prometheus
+      - prometheus_config:/etc/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: enhanced-ai-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_SECURITY_ADMIN_PASSWORD}
+      GF_SECURITY_ALLOW_EMBEDDING: ${GRAFANA_SECURITY_ALLOW_EMBEDDING:-true}
+      GF_AUTH_ANONYMOUS_ENABLED: ${GRAFANA_AUTH_ANONYMOUS_ENABLED:-false}
+      GF_LOG_LEVEL: ${GRAFANA_LOG_LEVEL:-info}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/ai-agent-overview.json
+      GF_FEATURE_TOGGLES_ENABLE: publicDashboards
+      GF_ANALYTICS_REPORTING_ENABLED: false
+      GF_ANALYTICS_CHECK_FOR_UPDATES: false
+      GF_USERS_ALLOW_SIGN_UP: false
+      GF_USERS_ALLOW_ORG_CREATE: false
+      GF_USERS_AUTO_ASSIGN_ORG: true
+      GF_USERS_AUTO_ASSIGN_ORG_ROLE: Viewer
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_logs:/var/log/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+      - neo4j
+      - postgres
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: enhanced-ai-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./infrastructure/monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: enhanced-ai-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./infrastructure/monitoring/loki/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: enhanced-ai-alertmanager
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    volumes:
+      - ./infrastructure/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # SYSTEM METRICS - Node Exporter (Linux hosts only)
+  # =============================================================================
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: enhanced-ai-node-exporter
+    restart: unless-stopped
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
+    networks:
+      - enhanced-ai-network
+    profiles:
+      - linux
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # REVERSE PROXY - Nginx for Production Load Balancing (Optional)
+  # =============================================================================
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: enhanced-ai-nginx
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/sites-available:/etc/nginx/sites-available:ro
+      - ./infrastructure/nginx/ssl:/etc/nginx/ssl:ro
+      - ./infrastructure/security/nginx/security.conf:/etc/nginx/security/security.conf:ro
+      - ./infrastructure/nginx/security-http.conf:/etc/nginx/security/security-http.conf:ro
+      - nginx_logs:/var/log/nginx
+    ports:
+      - "${EXTERNAL_PORT:-80}:80"
+      - "443:443"
+    depends_on:
+      - n8n
+      - grafana
+    networks:
+      - enhanced-ai-network
+    profiles:
+      - production
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # OTEL Collector - Traces/Metrics/Logs pipeline (optional but enabled here)
+  # =============================================================================
+  otel-collector:
+    image: otel/opentelemetry-collector:0.97.0
+    container_name: otel-collector
+    command: ["--config=/etc/otel/collector.yaml"]
+    volumes:
+      - ./infrastructure/monitoring/otel/collector.yaml:/etc/otel/collector.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Collector own Prometheus metrics
+    networks:
+      - enhanced-ai-network
+    restart: unless-stopped
+
+  # =============================================================================
+  # API Layer - Root implementation
+  # =============================================================================
+  api-service:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: enhanced-ai-agent-api
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-ai_agent_user}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/
+      FLASK_ENV: ${FLASK_ENV:-production}
+      SECRET_KEY: ${API_SECRET_KEY}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: enhanced-ai-agent-api
+    ports:
+      - "5000:5000"
+      - "5001:5001"  # WebSocket or secondary
+    depends_on:
+      - postgres
+      - neo4j
+      - rabbitmq
+    networks:
+      - enhanced-ai-network
+    volumes:
+      - api-logs:/app/logs
+      - api-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# =============================================================================
+# PERSISTENT VOLUMES
+# =============================================================================
+volumes:
+  # Database Volumes
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/postgres
+  postgres_backups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/backups/postgres
+
+  # Neo4j Volumes
+  neo4j_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/neo4j/data
+  neo4j_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/neo4j/logs
+  neo4j_import:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/neo4j/import
+  neo4j_plugins:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/neo4j/plugins
+  neo4j_backups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/backups/neo4j
+
+  # RabbitMQ Volumes
+  rabbitmq_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/rabbitmq
+  rabbitmq_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/logs/rabbitmq
+  rabbitmq_backups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/backups/rabbitmq
+
+  # n8n Volumes
+  n8n_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/n8n
+  n8n_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/logs/n8n
+  n8n_backups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/backups/n8n
+
+  # Monitoring Volumes
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/prometheus
+  prometheus_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./infrastructure/monitoring/prometheus
+
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/grafana
+  grafana_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/logs/grafana
+
+  # Alertmanager Volume
+  alertmanager_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/alertmanager
+
+  loki_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/data/loki
+
+  # API persistence
+  api-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./logs/api
+  api-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/api
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  enhanced-ai-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${DOCKER_NETWORK_SUBNET:-172.20.0.0/16}
+          gateway: ${DOCKER_NETWORK_GATEWAY:-172.20.0.1}
+    driver_opts:
+      com.docker.network.bridge.name: enhanced-ai-br0
+      com.docker.network.driver.mtu: 1500
+  agentnet:
+    external: true
+    name: agentnet

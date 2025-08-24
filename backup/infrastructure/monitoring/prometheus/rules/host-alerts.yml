@@ -1,0 +1,38 @@
+groups:
+  - name: host-alerts
+    rules:
+      - alert: HostDown
+        expr: up{job="node-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host down (instance={{ $labels.instance }})"
+          description: "Node Exporter reports target down for over 2 minutes."
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage (instance={{ $labels.instance }})"
+          description: "CPU usage > 90% for 10m."
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage (instance={{ $labels.instance }})"
+          description: "Memory usage > 90% for 10m."
+
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} * 100) < 10
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low disk space (instance={{ $labels.instance }}, mount={{ $labels.mountpoint }})"
+          description: "Available disk space < 10% for 10m."
