@@ -57,7 +57,7 @@ function Invoke-Check {
   $envOk = $false
   if (Test-Path $EnvFile) { $envOk = Test-EnvKeys } else { Write-Log ".env not found at $EnvFile" 'ERROR' }
   try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile config | Out-Null; Write-Log "docker-compose config OK" 'SUCCESS' } catch { Write-Log "docker-compose config failed: $($_.Exception.Message)" 'ERROR' }
-  Write-Host "`n=== existing containers (if any) ==="; try { Dc -f $ComposeFile ps } catch {}
+  Write-Host "`n=== existing containers (if any) ==="; try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile ps } catch {}
   Write-Host "`n=== health (if running) ==="; @('enhanced-ai-postgres','enhanced-ai-neo4j','enhanced-ai-rabbitmq','enhanced-ai-n8n','enhanced-ai-agent-api') | ForEach-Object { Get-ContainerHealth $_ } | Out-Host
   if (-not $envOk) { exit 2 } else { exit 0 }
 }
@@ -177,6 +177,9 @@ function Initialize-Secrets {
   Set-Env-IfMissing -key 'POSTGRES_USER' -value 'postgres'
   Set-Env-IfMissing -key 'POSTGRES_DB' -value 'enhanced_ai_os'
   Set-Env-IfMissing -key 'POSTGRES_PASSWORD' -value (New-SecretString 32)
+  # Defaults for Compose variable expansion (suppress warnings)
+  Set-Env-IfMissing -key 'POSTGRES_HOST' -value 'postgres'
+  Set-Env-IfMissing -key 'POSTGRES_PORT' -value '5432'
 
   # Neo4j
   Set-Env-IfMissing -key 'NEO4J_PASSWORD' -value (New-SecretString 32)
@@ -363,10 +366,13 @@ volumes:
 
 function Update-GitIgnore {
   $gi = Join-Path $Script:Root ".gitignore"
-  if (-not (Test-Path $gi)) { Set-Content -LiteralPath $gi -Value "deploy_tmp/`n" }
+  if (-not (Test-Path $gi)) {
+    Set-Content -LiteralPath $gi -Value "deploy_tmp/`n.env`ndeployment.local.log`n"
+  }
   else {
-    $exists = Select-String -Path $gi -Pattern "^deploy_tmp/" -SimpleMatch -Quiet
-    if (-not $exists) { Add-Content -LiteralPath $gi -Value "deploy_tmp/`n" }
+    $needs = @('deploy_tmp/','.env','deployment.local.log')
+    $cur = Get-Content -LiteralPath $gi -ErrorAction SilentlyContinue
+    foreach ($n in $needs) { if (-not ($cur -contains $n)) { Add-Content -LiteralPath $gi -Value ($n + "`n") } }
   }
 }
 
@@ -416,7 +422,7 @@ function Invoke-PhaseAPI {
 
 function Write-Summary {
   Write-Host "`n=== docker compose ps ==="
-  Dc --project-directory $Script:Root -f $ComposeFile -f $OverrideFile ps
+  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile ps
   Write-Host "`n=== health summary ==="
   @(
     'enhanced-ai-postgres',

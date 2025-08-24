@@ -29,6 +29,26 @@ def create_app() -> Flask:
     register_jwt_callbacks(jwt)
     CORS(app, resources={r"/*": {"origins": app.config.get("CORS_ORIGINS", "*")}}, supports_credentials=True)
 
+    # Root route for convenience (register BEFORE RESTX so it takes precedence)
+    @app.route("/")
+    def index():
+        return jsonify({
+            "status": "ok",
+            "message": "Enhanced AI Agent API",
+            "endpoints": {
+                "health": "/system/health",
+                "auth": "/auth",
+                "agents": "/agents",
+                "workflows": "/workflows",
+            }
+        })
+    # Note: Do not register an empty path ('') — Flask requires leading '/'
+
+    # Back-compat health endpoint at root scope (RESTX is under /api now)
+    @app.route("/system/health")
+    def root_health():
+        return jsonify({"status": "ok"})
+
     # RESTX API
     restx_api.init_app(app)
     restx_api.add_namespace(auth_ns)
@@ -48,20 +68,6 @@ def create_app() -> Flask:
 
     # Error handlers
     register_error_handlers(app)
-
-    # Root route for convenience
-    @app.route("/")
-    def index():
-        return jsonify({
-            "status": "ok",
-            "message": "Enhanced AI Agent API",
-            "endpoints": {
-                "health": "/system/health",
-                "auth": "/auth",
-                "agents": "/agents",
-                "workflows": "/workflows",
-            }
-        })
 
     # DB create (dev only)
     with app.app_context():

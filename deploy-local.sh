@@ -224,8 +224,8 @@ run_check(){
   log "Running preflight checks (no changes)"
   require_tools
   check_env_keys
-  if docker_compose -f "$COMPOSE_FILE" config >/dev/null 2>&1; then success "docker compose config OK"; else err "docker compose config failed"; fi
-  echo -e "\n=== existing containers (if any) ==="; docker_compose -f "$COMPOSE_FILE" ps || true
+  if docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config >/dev/null 2>&1; then success "docker compose config OK"; else err "docker compose config failed"; fi
+  echo -e "\n=== existing containers (if any) ==="; docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps || true
   echo -e "\n=== health (if running) ===";
   for c in \
     enhanced-ai-postgres \
@@ -281,7 +281,7 @@ phase_api(){
 
 summary(){
   echo -e "\n=== docker compose ps ===" | tee -a "$LOG_FILE"
-  docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" ps | tee -a "$LOG_FILE"
+  docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" --env-file "$ENV_FILE" ps | tee -a "$LOG_FILE"
   echo -e "\n=== health summary ==="
   for c in \
     enhanced-ai-postgres \
@@ -299,7 +299,6 @@ summary(){
 
 generate_override(){
   cat >"$OVERRIDE_FILE" <<EOF
-version: "3.9"
 volumes:
   postgres_data:
     driver: local
@@ -434,7 +433,17 @@ EOF
 
 ensure_gitignore(){
   local gi="$PROJECT_DIR/.gitignore"
-  if [[ ! -f "$gi" ]]; then echo "deploy_tmp/" > "$gi"; else grep -qx 'deploy_tmp/' "$gi" || echo 'deploy_tmp/' >> "$gi"; fi
+  if [[ ! -f "$gi" ]]; then
+    {
+      echo 'deploy_tmp/'
+      echo '.env'
+      echo 'deployment.local.log'
+    } > "$gi"
+  else
+    grep -qx 'deploy_tmp/' "$gi" || echo 'deploy_tmp/' >> "$gi"
+    grep -qx '\.env' "$gi" || echo '.env' >> "$gi"
+    grep -qx 'deployment\.local\.log' "$gi" || echo 'deployment.local.log' >> "$gi"
+  fi
 }
 
 main(){

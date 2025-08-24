@@ -23,5 +23,6 @@ api = Api(
     doc="/docs",
     authorizations=authorizations,
     security="BearerAuth",
+    prefix="/api",
 )
 socketio = SocketIO(async_mode="gevent")
