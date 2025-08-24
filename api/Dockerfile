@@ -17,8 +17,8 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt \
     && pip install --no-cache-dir gunicorn gevent gevent-websocket greenlet
 
-# Copy app
-COPY . /app
+# Copy app into a package directory so imports are under the 'api' package
+COPY . /app/api
 
 # Env
 ENV PYTHONUNBUFFERED=1 \
@@ -31,5 +31,5 @@ EXPOSE 5000 5001
 # Healthcheck path is /health via compose healthcheck
 
 # Start with Gunicorn using gevent websocket worker
-# The wsgi module exposes `app` from api/wsgi.py
+# Import WSGI app from the api package so relative imports work
 CMD ["gunicorn", "-k", "geventwebsocket.gunicorn.workers.GeventWebSocketWorker", "-w", "1", "-b", "0.0.0.0:5000", "api.wsgi:app"]

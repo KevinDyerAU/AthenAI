@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from .config import get_config
 from .extensions import db, ma, jwt, api as restx_api, socketio
@@ -48,6 +48,20 @@ def create_app() -> Flask:
 
     # Error handlers
     register_error_handlers(app)
+
+    # Root route for convenience
+    @app.route("/")
+    def index():
+        return jsonify({
+            "status": "ok",
+            "message": "Enhanced AI Agent API",
+            "endpoints": {
+                "health": "/system/health",
+                "auth": "/auth",
+                "agents": "/agents",
+                "workflows": "/workflows",
+            }
+        })
 
     # DB create (dev only)
     with app.app_context():

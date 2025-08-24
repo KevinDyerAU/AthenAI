@@ -1,7 +1,7 @@
 # WSGI entrypoint for the API service
 # Exposes `app` for Gunicorn to serve with gevent-websocket workers.
 
-from api.app import create_app  # type: ignore
+from .app import create_app  # type: ignore
 
 app = create_app()
 

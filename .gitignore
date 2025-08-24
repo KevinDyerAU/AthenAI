@@ -1,1 +1,3 @@
 deploy_tmp/
+.env
+deployment.local.log

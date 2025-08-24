@@ -56,7 +56,7 @@ function Invoke-Check {
   Test-RequiredTools
   $envOk = $false
   if (Test-Path $EnvFile) { $envOk = Test-EnvKeys } else { Write-Log ".env not found at $EnvFile" 'ERROR' }
-  try { Dc --project-directory $Script:Root -f $ComposeFile config | Out-Null; Write-Log "docker-compose config OK" 'SUCCESS' } catch { Write-Log "docker-compose config failed: $($_.Exception.Message)" 'ERROR' }
+  try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile config | Out-Null; Write-Log "docker-compose config OK" 'SUCCESS' } catch { Write-Log "docker-compose config failed: $($_.Exception.Message)" 'ERROR' }
   Write-Host "`n=== existing containers (if any) ==="; try { Dc -f $ComposeFile ps } catch {}
   Write-Host "`n=== health (if running) ==="; @('enhanced-ai-postgres','enhanced-ai-neo4j','enhanced-ai-rabbitmq','enhanced-ai-n8n','enhanced-ai-agent-api') | ForEach-Object { Get-ContainerHealth $_ } | Out-Host
   if (-not $envOk) { exit 2 } else { exit 0 }
@@ -220,10 +220,10 @@ function Initialize-Directories {
 
 function New-NetworkIfMissing { if (-not (docker network ls --format '{{.Name}}' | Select-String -SimpleMatch 'agentnet' -Quiet)) { docker network create agentnet | Out-Null } }
 
-function Invoke-ComposeDownFresh { if (Test-Path $ComposeFile) { Dc --project-directory $Script:Root -f $ComposeFile --env-file .env down -v | Out-Null } }
+function Invoke-ComposeDownFresh { if (Test-Path $ComposeFile) { Dc --project-directory $Script:Root -f $ComposeFile --env-file $EnvFile down -v | Out-Null } }
 function Invoke-BuildAll {
   Write-Log "Building images (docker compose build)"
-  try { Dc --project-directory $Script:Root --env-file .env -f $ComposeFile -f $OverrideFile build | Out-Null; Write-Log "Build completed" 'SUCCESS' } catch { Write-Log ("Build failed: {0}" -f $_.Exception.Message) 'ERROR'; throw }
+  try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile build | Out-Null; Write-Log "Build completed" 'SUCCESS' } catch { Write-Log ("Build failed: {0}" -f $_.Exception.Message) 'ERROR'; throw }
 }
 function New-OverrideFile {
   $content = @"
@@ -382,7 +382,7 @@ function Wait-Healthy([string]$name, [int]$seconds = 360) {
 
 function Invoke-PhaseCore {
   Write-Log "Starting core: postgres, neo4j, rabbitmq"
-  Dc --project-directory $Script:Root --env-file .env -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs postgres neo4j rabbitmq
+  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs postgres neo4j rabbitmq
   Wait-Healthy 'enhanced-ai-postgres' 300
   Wait-Healthy 'enhanced-ai-neo4j' 480
   Wait-Healthy 'enhanced-ai-rabbitmq' 300
@@ -390,7 +390,7 @@ function Invoke-PhaseCore {
 
 function Invoke-PhaseMonitoring {
   Write-Log "Starting monitoring stack"
-  try { Dc --project-directory $Script:Root --env-file .env -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector } catch { Write-Log $_.Exception.Message 'WARN' }
+  try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector } catch { Write-Log $_.Exception.Message 'WARN' }
   $gp = ${env:GRAFANA_PORT}; if (-not $gp) { $gp = 3000 }
   $pp = ${env:PROMETHEUS_PORT}; if (-not $pp) { $pp = 9090 }
   $lp = ${env:LOKI_PORT}; if (-not $lp) { $lp = 3100 }
@@ -403,14 +403,14 @@ function Invoke-PhaseMonitoring {
 
 function Invoke-PhaseOrchestration {
   Write-Log "Starting orchestration: n8n"
-  Dc --project-directory $Script:Root --env-file .env -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs n8n
+  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs n8n
   try { Wait-Healthy 'enhanced-ai-n8n' 420 } catch { Write-Log "n8n not healthy yet" 'WARN' }
 }
 
 function Invoke-PhaseAPI {
   Write-Log "Building and starting API"
-  Dc --project-directory $Script:Root --env-file .env -f $ComposeFile -f $OverrideFile build api-service
-  Dc --project-directory $Script:Root --env-file .env -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs api-service
+  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile build api-service
+  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs api-service
   Wait-Healthy 'enhanced-ai-agent-api' 300
 }
 
@@ -443,7 +443,7 @@ Initialize-Directories
 New-OverrideFile
 Update-GitIgnore
 New-NetworkIfMissing
-if (-not $SkipPull) { Write-Log "docker compose pull"; try { Dc --project-directory $Script:Root -f $ComposeFile -f $OverrideFile --env-file .env pull | Out-Null } catch { Write-Log $_.Exception.Message 'WARN' } }
+if (-not $SkipPull) { Write-Log "docker compose pull"; try { Dc --project-directory $Script:Root -f $ComposeFile -f $OverrideFile --env-file $EnvFile pull | Out-Null } catch { Write-Log $_.Exception.Message 'WARN' } }
 if ($Fresh) { Invoke-BuildAll }
 if ($Status) { Write-Summary; exit 0 }
 Invoke-PhaseCore
