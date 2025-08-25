@@ -247,6 +247,23 @@ check_http(){
   if [[ "$code" == "200" || "$code" == "204" ]]; then success "${label} HTTP OK (${code}) - $url"; else warn "${label} HTTP check failed (${code:-no-conn}) - $url"; fi
 }
 
+# Verify API JSON health endpoint and fail fast if degraded
+verify_api_health(){
+  local port="${PORT:-8000}"
+  local url="http://localhost:${port}/api/system/health"
+  log "Verifying API health at ${url}"
+  local body
+  body=$(curl -fsS --max-time 5 "$url" 2>/dev/null || true)
+  if [[ -z "$body" ]]; then
+    err "API health endpoint not reachable at ${url}"
+  fi
+  if grep -qi '"status"\s*:\s*"degraded"' <<<"$body"; then
+    warn "API health degraded: $body"
+    err "Startup aborted due to degraded API health"
+  fi
+  success "API health OK"
+}
+
 phase_core(){
   log "Starting core: postgres, neo4j, rabbitmq"
   docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" up -d $DOCKER_UP_ARGS postgres neo4j rabbitmq
@@ -293,6 +310,7 @@ phase_api(){
   docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" build api-service
   docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" up -d $DOCKER_UP_ARGS api-service
   wait_healthy enhanced-ai-agent-api 300
+  verify_api_health
 }
 
 summary(){

@@ -182,3 +182,14 @@ To schedule:
 - Expand CI tests to cover knowledge and conversation flows and WebSocket room events.
 - Harden WebSocket authentication.
 - Extend n8n flows to execute real agent logic using payloads received.
+
+## Open TODOs (Health, Monitoring, Dependencies)
+
+- Add DB pool status and pg_stat metrics integration (SQLAlchemy pool, pg_stat_database) and expose via /metrics.
+- Add Neo4j cluster/connection metrics and simple Cypher timing to /metrics.
+- Implement RabbitMQ queue depth, consumer count, and message rates via management API or Prometheus RMQ exporter; wire scrape targets.
+- Implement backup status probe for Postgres/Neo4j and expose last snapshot time and success flag in deep health.
+- Add alerting rules for degraded API health and dependency_up==0 in Prometheus rules.
+- Add automatic retry/backoff wrappers for dependency initialization in the API and graceful degradation paths.
+- Extend deploy-cloud.sh to verify API /api/system/health and abort/rollback on degraded state.
+- Add recovery scripts to restart unhealthy services and escalate after N failures; log recovery actions.
