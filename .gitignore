@@ -1,3 +1,10 @@
 deploy_tmp/
+# Ignore environment files, but keep example templates
 .env
+.env.*
+!.env*.example
+!unified.env.example
+
+# Deployment logs
 deployment.local.log
+cloud-deployment.log

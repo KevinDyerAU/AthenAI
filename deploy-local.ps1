@@ -394,6 +394,18 @@ function Invoke-PhaseCore {
   Wait-Healthy 'enhanced-ai-rabbitmq' 300
 }
 
+function Invoke-DatabaseMigrations {
+  Write-Log "Applying database migrations (Postgres, Neo4j)"
+  $pgScript = Join-Path $Script:Root "scripts\migrations\apply-postgres.ps1"
+  $neoScript = Join-Path $Script:Root "scripts\migrations\apply-neo4j.ps1"
+  if (Test-Path $pgScript) {
+    try { & $pgScript; Write-Log "Postgres migration completed" 'SUCCESS' } catch { Write-Log ("Postgres migration failed: {0}" -f $_.Exception.Message) 'ERROR'; throw }
+  } else { Write-Log "Postgres migration script not found at $pgScript" 'WARN' }
+  if (Test-Path $neoScript) {
+    try { & $neoScript; Write-Log "Neo4j migration completed" 'SUCCESS' } catch { Write-Log ("Neo4j migration failed: {0}" -f $_.Exception.Message) 'ERROR'; throw }
+  } else { Write-Log "Neo4j migration script not found at $neoScript" 'WARN' }
+}
+
 function Invoke-PhaseMonitoring {
   Write-Log "Starting monitoring stack"
   try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector } catch { Write-Log $_.Exception.Message 'WARN' }
@@ -453,6 +465,7 @@ if (-not $SkipPull) { Write-Log "docker compose pull"; try { Dc --project-direct
 if ($Fresh) { Invoke-BuildAll }
 if ($Status) { Write-Summary; exit 0 }
 Invoke-PhaseCore
+Invoke-DatabaseMigrations
 Invoke-PhaseMonitoring
 Invoke-PhaseOrchestration
 Invoke-PhaseAPI

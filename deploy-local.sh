@@ -255,6 +255,22 @@ phase_core(){
   wait_healthy enhanced-ai-rabbitmq 300
 }
 
+phase_migrations(){
+  log "Applying database migrations (Postgres, Neo4j)"
+  local pg_script="$SCRIPT_DIR/scripts/migrations/apply-postgres.sh"
+  local neo_script="$SCRIPT_DIR/scripts/migrations/apply-neo4j.sh"
+  if [[ -f "$pg_script" ]]; then
+    bash "$pg_script" && success "Postgres migration completed" || err "Postgres migration failed"
+  else
+    warn "Postgres migration script not found at $pg_script"
+  fi
+  if [[ -f "$neo_script" ]]; then
+    bash "$neo_script" && success "Neo4j migration completed" || err "Neo4j migration failed"
+  else
+    warn "Neo4j migration script not found at $neo_script"
+  fi
+}
+
 phase_monitoring(){
   log "Starting monitoring: prometheus grafana loki promtail alertmanager otel-collector"
   docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" up -d $DOCKER_UP_ARGS prometheus grafana loki promtail alertmanager otel-collector || true
@@ -462,6 +478,7 @@ main(){
     summary; exit 0
   fi
   phase_core
+  phase_migrations
   phase_monitoring
   phase_orchestration
   phase_api

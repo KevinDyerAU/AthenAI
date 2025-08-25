@@ -53,6 +53,34 @@ Key variables:
 pip install -r api/requirements.txt
 ```
 
+## Database initialization
+
+Schemas are applied automatically during deploys.
+
+- **Local deploy** (`deploy-local.ps1` / `deploy-local.sh`): after `postgres` and `neo4j` are healthy, runs:
+  - `scripts/migrations/apply-postgres.ps1` or `.sh`
+  - `scripts/migrations/apply-neo4j.ps1` or `.sh`
+- **Cloud deploy** (`deploy-cloud.sh`): after upstream Render deploy completes, runs:
+  - `scripts/migrations/cloud-apply-postgres.sh` (uses `DATABASE_URL` or `PG*` vars from `.env.cloud`)
+  - `scripts/migrations/cloud-apply-neo4j.sh` (uses `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`)
+
+Source schemas:
+
+- PostgreSQL: `db/postgres/schema.sql`
+- Neo4j: `db/neo4j/schema.cypher`
+
+Manual (optional):
+
+```bash
+# Local containers
+scripts/migrations/apply-postgres.sh
+scripts/migrations/apply-neo4j.sh
+
+# Managed cloud services
+scripts/migrations/cloud-apply-postgres.sh
+scripts/migrations/cloud-apply-neo4j.sh
+```
+
 ## Create Neo4j indexes
 
 Use cypher-shell or Neo4j Browser to run `scripts/neo4j/create_indexes.cypher`:

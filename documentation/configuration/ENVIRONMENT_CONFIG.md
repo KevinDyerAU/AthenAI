@@ -4,8 +4,23 @@ This document describes all configuration parameters, recommended values for eac
 
 - File templates:
   - Development: `.env.development.example`
+  - Staging: `.env.staging.example`
   - Production: `.env.production.example`
-- Validator: `scripts/config/validate_env.py`
+  - Cloud (managed services): `.env.cloud.example`
+  - Unified superset (optional): `unified.env.example`
+- Validator: `scripts/config/validate_env.py` (wrappers: `scripts/config/validate.sh`, `scripts/config/validate-staging.ps1`)
+
+## Override hierarchy
+
+Configuration is loaded from environment variables. We recommend the following file strategy:
+
+1. Base file: `.env` (copied from `.env.example` or `unified.env.example`)
+2. Environment-specific overrides (not committed): `.env.development`, `.env.staging`, `.env.production`, `.env.cloud`
+3. Local machine overrides (ignored): `.env.local`
+
+Precedence (highest wins) generally follows: process env vars > `.env.<environment>` > `.env`.
+
+Security: `.gitignore` is configured to ignore `.env` and `.env.*` but keep `*.example` templates tracked.
 
 ## Core Settings
 - APP_NAME: Service name.
@@ -98,6 +113,11 @@ This document describes all configuration parameters, recommended values for eac
 - Leverage cloud secret managers (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault).
 - Backups via managed snapshots and S3/GCS/Azure Blob.
 
+Use `.env.cloud` or platform env vars. The cloud migration scripts read:
+
+- Postgres: `DATABASE_URL` (preferred) or `DB_*` components
+- Neo4j: `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`
+
 ---
 
 # Security Best Practices
@@ -116,9 +136,21 @@ Run the validator to check required variables and formats:
 ```
 python scripts/config/validate_env.py --env-file .env.development.example --environment development
 ```
+- Staging:
+```
+python scripts/config/validate_env.py --env-file .env.staging.example --environment staging
+```
 - Production:
 ```
 python scripts/config/validate_env.py --env-file .env.production.example --environment production
+```
+ - Bash wrapper:
+```
+scripts/config/validate.sh .env.staging.example staging
+```
+ - PowerShell (staging):
+```
+powershell -File scripts/config/validate-staging.ps1 -EnvFile .env.staging.example
 ```
 
 Exit code 0 indicates success; non-zero indicates missing or invalid settings.

@@ -72,5 +72,20 @@ source "$PROJECT_DIR/.cloud_prelude.tmp.sh"
 # shellcheck disable=SC1090
 source "$UPSTREAM_SCRIPT"
 
+# After upstream deploy completes, run database migrations against managed services
+log "Running cloud database migrations (Postgres, Neo4j)"
+CLOUD_PG_SCRIPT="$PROJECT_DIR/scripts/migrations/cloud-apply-postgres.sh"
+CLOUD_NEO_SCRIPT="$PROJECT_DIR/scripts/migrations/cloud-apply-neo4j.sh"
+if [[ -f "$CLOUD_PG_SCRIPT" ]]; then
+  bash "$CLOUD_PG_SCRIPT" || err "Cloud Postgres migration failed"
+else
+  warn "Missing script: $CLOUD_PG_SCRIPT"
+fi
+if [[ -f "$CLOUD_NEO_SCRIPT" ]]; then
+  bash "$CLOUD_NEO_SCRIPT" || err "Cloud Neo4j migration failed"
+else
+  warn "Missing script: $CLOUD_NEO_SCRIPT"
+fi
+
 # Cleanup temp prelude (not critical)
 rm -f "$PROJECT_DIR/.cloud_prelude.tmp.sh" || true

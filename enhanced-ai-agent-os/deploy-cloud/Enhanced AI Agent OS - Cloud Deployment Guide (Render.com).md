@@ -203,6 +203,40 @@ The script will:
 6. Verify deployment health and connectivity
 7. Display access information and management URLs
 
+### Post-Deploy Migrations (Managed Databases)
+
+After the upstream deployment completes, the root-level `deploy-cloud.sh` automatically applies the unified schemas to your managed databases.
+
+- PostgreSQL schema: `db/postgres/schema.sql`
+- Neo4j schema: `db/neo4j/schema.cypher`
+
+The scripts used are:
+
+```bash
+# Runs automatically from deploy-cloud.sh after upstream deploy
+scripts/migrations/cloud-apply-postgres.sh
+scripts/migrations/cloud-apply-neo4j.sh
+```
+
+These scripts read `.env.cloud` for the following keys:
+
+- PostgreSQL: `DATABASE_URL` (preferred) or `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` (or `POSTGRES_*` equivalents)
+- Neo4j: `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`
+
+#### Render Post-Deploy Command (optional)
+
+If you want Render to run migrations automatically on each deploy of your app service, configure the “Post-deploy command” as:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+# Ensure repo scripts are available in the Render container; adjust path if needed
+./scripts/migrations/cloud-apply-postgres.sh
+./scripts/migrations/cloud-apply-neo4j.sh
+```
+
+Render will inject service environment variables, so `.env.cloud` is not required inside the container if variables are defined in the service settings.
+
 ### Manual Deployment (Advanced Users)
 
 For advanced users who prefer manual control:
