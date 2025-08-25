@@ -249,8 +249,9 @@ check_http(){
 
 # Verify API JSON health endpoint and fail fast if degraded
 verify_api_health(){
-  local port="${PORT:-8000}"
-  local url="http://localhost:${port}/api/system/health"
+  # Compose maps API to host port 5000 and exposes /system/health
+  local port="5000"
+  local url="http://localhost:${port}/system/health"
   log "Verifying API health at ${url}"
   local body
   body=$(curl -fsS --max-time 5 "$url" 2>/dev/null || true)

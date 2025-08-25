@@ -107,6 +107,53 @@ This starts Flask-SocketIO (gevent) on `HOST`/`PORT`.
 
 Health check: `GET /system/health` → `{ "status": "ok" }`
 
+## WebSocket usage
+
+- Endpoint: same origin as API (Socket.IO). Connect with optional JWT:
+
+```js
+// Browser (Socket.IO v4)
+const token = "<JWT>"; // optional
+const socket = io("/", { transports: ["websocket"], auth: { token } });
+socket.on("connected", (p) => console.log("WS connected", p));
+socket.on("message:new", (m) => console.log("message", m));
+
+// Join a conversation room (requires JWT with access)
+socket.emit("room:join", { conversation_id: "<cid>" });
+
+// Send a message (persists to Neo4j and broadcasts to room)
+socket.emit("message:send", { conversation_id: "<cid>", message: "Hello" });
+```
+
+- Events:
+  - `connected` → { connection_id, user_id }
+  - `room:joined` → { conversation_id }
+  - `history` → { conversation_id, messages: [...] }
+  - `message:new` → persisted message payload
+  - `agent:update` → forwarded from RabbitMQ for the conversation
+  - `error` → { message }
+
+## RabbitMQ routing (agent updates)
+
+- Default queue: `agent_updates` (override with `AGENT_UPDATES_QUEUE`).
+- Payload must include `conversation_id` for room routing.
+
+Example payload:
+
+```json
+{
+  "conversation_id": "<cid>",
+  "event": "agent:update",
+  "status": "running",
+  "agent_id": "agent-123",
+  "data": { "progress": 0.42 }
+}
+```
+
+See example publishers:
+- Python: `examples/integrations/python/rabbitmq_publish_agent_update.py`
+- Node: `examples/integrations/node/rabbitmq_publish_agent_update.js`
+
 ## n8n webhooks
 
 Import these workflows in n8n (UI → Import from file):
@@ -133,6 +180,16 @@ The test covers:
 - Create/Login user
 - Create Agent → `POST /agents/{id}/execute`
 - Create Workflow → `POST /workflows/{id}/run`
+
+### Basic WebSocket test
+
+Run the basic WS integration test (connect + auth enforcement):
+
+```bash
+python -m pytest -q tests/ws/test_ws_basic.py
+```
+
+Requires API running locally with default `HOST/PORT` and no extra setup.
 
 ## Audit logging
 

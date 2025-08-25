@@ -1,0 +1,39 @@
+# Python cache and build
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+
+# Git and VCS
+.git/
+.gitignore
+
+# Env files (handled via env_file / secrets)
+.env
+.env.*
+!.env.example
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Node / frontend (if any)
+node_modules/
+
+# OS and editor junk
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Tests and local artifacts
+coverage/
+htmlcov/
+.pytest_cache/
+/tests/
+
+# Logs and data (mounted as volumes at runtime)
+logs/
+data/

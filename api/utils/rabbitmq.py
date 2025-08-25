@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Callable, Optional
 
 try:
     import pika  # type: ignore
@@ -44,3 +44,57 @@ def publish_task(task: Dict[str, Any], routing_key: str = "tasks") -> bool:
         return True
     except Exception:
         return False
+
+
+def start_consumer(queue: str, on_message: Callable[[dict], None], prefetch: int = 10) -> Optional[Callable[[], None]]:
+    """Start a simple blocking consumer in the calling thread.
+    Returns a stop function when started successfully, else None.
+    The caller should run this in a background thread/greenlet.
+    """
+    if pika is None:
+        return None
+    params = _get_connection_params()
+    if params is None:
+        return None
+
+    connection = None
+    channel = None
+    try:
+        connection = pika.BlockingConnection(params)
+        channel = connection.channel()
+        channel.queue_declare(queue=queue, durable=True)
+        channel.basic_qos(prefetch_count=prefetch)
+
+        def _callback(ch, method, properties, body):  # type: ignore
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+                on_message(payload)
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+            except Exception:
+                # Nack and requeue for later processing
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+
+        channel.basic_consume(queue=queue, on_message_callback=_callback, auto_ack=False)
+
+        def _stop():
+            try:
+                if channel and channel.is_open:
+                    channel.stop_consuming()
+            finally:
+                try:
+                    if connection and connection.is_open:
+                        connection.close()
+                except Exception:
+                    pass
+
+        # Start consuming in this thread/greenlet; the caller should run it in background
+        channel.start_consuming()
+        return _stop
+    except Exception:
+        # Ensure clean close on failure
+        try:
+            if connection and connection.is_open:
+                connection.close()
+        except Exception:
+            pass
+        return None

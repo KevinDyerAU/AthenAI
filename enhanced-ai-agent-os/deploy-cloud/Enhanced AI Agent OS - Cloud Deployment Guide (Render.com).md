@@ -237,6 +237,38 @@ set -euo pipefail
 
 Render will inject service environment variables, so `.env.cloud` is not required inside the container if variables are defined in the service settings.
 
+### Real-time WebSocket + RabbitMQ in Cloud
+
+- The API exposes Socket.IO WebSockets on the same domain as the web service.
+- Clients connect with optional JWT; room actions require auth.
+- Agent updates are forwarded from RabbitMQ → WebSocket rooms by `conversation_id`.
+
+Key environment variables:
+- `JWT_SECRET_KEY` (for WebSocket auth)
+- `CORS_ORIGINS` (origins allowed for WS)
+- `RABBITMQ_URL` (e.g., CloudAMQP `amqps://...`)
+- `AGENT_UPDATES_QUEUE` (default `agent_updates`)
+
+Example agent update payload (published to `AGENT_UPDATES_QUEUE`):
+
+```json
+{
+  "conversation_id": "<cid>",
+  "event": "agent:update",
+  "status": "running",
+  "agent_id": "agent-123",
+  "data": { "progress": 0.42 }
+}
+``
+
+Example publisher scripts (end-to-end validation):
+- Python: `examples/integrations/python/rabbitmq_publish_agent_update.py`
+- Node: `examples/integrations/node/rabbitmq_publish_agent_update.js`
+
+Example consumer scripts (diagnostics):
+- Python: `examples/integrations/python/rabbitmq_consume_agent_updates.py`
+- Node: `examples/integrations/node/rabbitmq_consume_agent_updates.js`
+
 ### Manual Deployment (Advanced Users)
 
 For advanced users who prefer manual control:

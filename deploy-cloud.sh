@@ -19,6 +19,86 @@ log()  { echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $*" | tee -a "$LOG_
 err()  { echo -e "${RED}[ERROR]${NC} $*" | tee -a "$LOG_FILE"; exit 1; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*" | tee -a "$LOG_FILE"; }
 
+# Create API web service on Render (Flask API in /api)
+create_api_web_service() {
+  log "Creating/Deploying API web service on Render"
+  if [[ -z "${RENDER_API_KEY:-}" || -z "${GITHUB_REPO_URL:-}" ]]; then
+    err "RENDER_API_KEY and GITHUB_REPO_URL must be set in .env.cloud"
+  fi
+
+  local RENDER_API_BASE="https://api.render.com/v1"
+  # Map optional CloudAMQP to our API expected env
+  local rabbitmq_url_val="${RABBITMQ_URL:-${CLOUDAMQP_URL:-}}"
+  local jwt_secret_val="${JWT_SECRET_KEY:-${API_JWT_SECRET:-}}"
+
+  # Build env var array JSON
+  # Note: Render web services must listen on $PORT; Gunicorn binding uses $PORT
+  read -r -d '' ENV_VARS_JSON <<EOF
+[
+  {"key":"FLASK_ENV","value":"production"},
+  {"key":"SECRET_KEY","value":"${API_SECRET_KEY:-${SECRET_KEY:-change-me}}"},
+  {"key":"JWT_SECRET_KEY","value":"${jwt_secret_val:-change-me}"},
+  {"key":"CORS_ORIGINS","value":"${CORS_ORIGINS:-*}"},
+  {"key":"DATABASE_URL","value":"${DATABASE_URL:-}"},
+  {"key":"NEO4J_URI","value":"${NEO4J_URI:-}"},
+  {"key":"NEO4J_USER","value":"${NEO4J_USERNAME:-${NEO4J_USER:-neo4j}}"},
+  {"key":"NEO4J_PASSWORD","value":"${NEO4J_PASSWORD:-}"},
+  {"key":"RABBITMQ_URL","value":"${rabbitmq_url_val:-}"},
+  {"key":"OPENAI_API_KEY","value":"${OPENAI_API_KEY:-}"}
+]
+EOF
+
+  read -r -d '' SERVICE_JSON <<EOF
+{
+  "type": "web_service",
+  "name": "enhanced-ai-api",
+  "ownerId": "${RENDER_OWNER_ID:-}",
+  "repo": "${GITHUB_REPO_URL}",
+  "branch": "${GITHUB_BRANCH:-main}",
+  "rootDir": "api",
+  "buildCommand": "pip install --upgrade pip && pip install -r requirements.txt",
+  "startCommand": "gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 -b 0.0.0.0:$PORT api.wsgi:app",
+  "plan": "${API_PLAN:-starter}",
+  "region": "${RENDER_REGION:-oregon}",
+  "autoDeploy": true,
+  "envVars": ${ENV_VARS_JSON},
+  "healthCheckPath": "/system/health",
+  "numInstances": ${API_INSTANCES:-1}
+}
+EOF
+
+  local response
+  response=$(curl -s -w "%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer ${RENDER_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "${SERVICE_JSON}" \
+    "${RENDER_API_BASE}/services" \
+    -o /tmp/api_service_response.json)
+
+  if [[ "$response" != "201" && "$response" != "200" ]]; then
+    warn "API web service creation returned HTTP $response"
+    if [[ -f /tmp/api_service_response.json ]]; then warn "Response: $(cat /tmp/api_service_response.json)"; fi
+  else
+    local service_id service_url
+    service_id=$(jq -r '.id // .service.id' /tmp/api_service_response.json)
+    service_url=$(jq -r '.serviceDetails.url // .url // empty' /tmp/api_service_response.json)
+    export API_SERVICE_ID="$service_id"
+    export API_SERVICE_URL="$service_url"
+    log "API service created: ID=$service_id URL=${service_url:-<pending>}"
+
+    # Reuse upstream wait function if available
+    if declare -f wait_for_service_ready >/dev/null 2>&1; then
+      log "Waiting for API service to become ready..."
+      wait_for_service_ready "web_service" "$service_id" 600 || err "API service failed to become ready"
+    else
+      warn "wait_for_service_ready not found; skipping readiness wait"
+    fi
+  fi
+
+  rm -f /tmp/api_service_response.json || true
+}
+
 usage() {
   cat <<'EOF'
 NeoV3 Cloud Deployment (Render.com)
@@ -71,6 +151,9 @@ EOF
 source "$PROJECT_DIR/.cloud_prelude.tmp.sh"
 # shellcheck disable=SC1090
 source "$UPSTREAM_SCRIPT"
+
+# Build/deploy API web service on Render (uses DATABASE_URL created upstream)
+create_api_web_service
 
 # After upstream deploy completes, run database migrations against managed services
 log "Running cloud database migrations (Postgres, Neo4j)"
