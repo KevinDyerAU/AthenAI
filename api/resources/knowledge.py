@@ -23,6 +23,22 @@ search_model = ns.model("KnowledgeSearch", {
     "limit": fields.Integer(default=10)
 })
 
+relation_key_model = ns.model("RelationKey", {
+    "subject_id": fields.String(required=True, description="Subject entity id"),
+    "predicate": fields.String(required=True, description="Relation type/predicate"),
+    "object_id": fields.String(required=True, description="Object entity id"),
+})
+
+relation_update_model = ns.inherit("RelationUpdate", relation_key_model, {
+    "attributes": fields.Raw(required=True, description="Properties to set on relation"),
+    "source": fields.String(description="Provenance source", default="api"),
+})
+
+relation_delete_model = ns.inherit("RelationDelete", relation_key_model, {
+    "reason": fields.String(description="Reason for deactivation"),
+    "source": fields.String(description="Provenance source", default="api"),
+})
+
 
 @ns.route("/query")
 class KnowledgeQuery(Resource):
@@ -151,3 +167,103 @@ class KnowledgeSearch(Resource):
         except Exception as e:
             audit_event("knowledge.search.error", {"error": str(e)}, user)
             ns.abort(400, f"Search failed: {e}")
+
+
+@ns.route("/relations/update")
+class KnowledgeRelationUpdate(Resource):
+    @jwt_required()
+    @ns.expect(relation_update_model, validate=True)
+    def post(self):
+        payload = request.get_json() or {}
+        subj = payload.get("subject_id")
+        pred = payload.get("predicate")
+        obj = payload.get("object_id")
+        attrs = payload.get("attributes") or {}
+        source = payload.get("source") or "api"
+        if not isinstance(attrs, dict) or not attrs:
+            ns.abort(400, "attributes must be a non-empty object")
+        user = get_jwt_identity()
+        uid = user["id"] if isinstance(user, dict) else user
+        cypher = (
+            "MERGE (s:Entity {id: $sid}) "
+            "MERGE (o:Entity {id: $oid}) "
+            "MERGE (s)-[r:RELATED {type: $pred}]->(o) "
+            "WITH r, $attrs AS attrs, $uid AS uid, timestamp() AS now, $source AS source "
+            "SET r += attrs, r.lastUpdated = now, r.updatedBy = uid, r.version = coalesce(r.version,0)+1, r.state = coalesce(r.state,'active') "
+            "SET r.provenance = coalesce(r.provenance, []) + [{by: uid, at: now, source: source, action: 'update'}] "
+            "RETURN r"
+        )
+        try:
+            rows = get_client().run_query(cypher, {"sid": subj, "oid": obj, "pred": pred, "attrs": attrs, "uid": str(uid), "source": source})
+            r = rows[0][0] if rows else {}
+            audit_event("knowledge.relation.update", {"subject": subj, "predicate": pred, "object": obj}, user)
+            return {"relation": r}, 200
+        except Exception as e:
+            audit_event("knowledge.relation.update.error", {"error": str(e)}, user)
+            ns.abort(400, f"Relation update failed: {e}")
+
+
+@ns.route("/relations/delete")
+class KnowledgeRelationDelete(Resource):
+    @jwt_required()
+    @ns.expect(relation_delete_model, validate=True)
+    def post(self):
+        payload = request.get_json() or {}
+        subj = payload.get("subject_id")
+        pred = payload.get("predicate")
+        obj = payload.get("object_id")
+        reason = payload.get("reason")
+        source = payload.get("source") or "api"
+        user = get_jwt_identity()
+        uid = user["id"] if isinstance(user, dict) else user
+        cypher = (
+            "MATCH (s:Entity {id: $sid})-[r:RELATED {type: $pred}]->(o:Entity {id: $oid}) "
+            "WITH r, $uid AS uid, timestamp() AS now, $source AS source, $reason AS reason "
+            "SET r.state = 'inactive', r.lastUpdated = now, r.updatedBy = uid, r.version = coalesce(r.version,0)+1 "
+            "SET r.provenance = coalesce(r.provenance, []) + [{by: uid, at: now, source: source, action: 'deactivate', reason: reason}] "
+            "RETURN r"
+        )
+        try:
+            rows = get_client().run_query(cypher, {"sid": subj, "oid": obj, "pred": pred, "uid": str(uid), "source": source, "reason": reason})
+            if not rows:
+                ns.abort(404, "Relation not found")
+            r = rows[0][0]
+            audit_event("knowledge.relation.delete", {"subject": subj, "predicate": pred, "object": obj}, user)
+            return {"relation": r}, 200
+        except Exception as e:
+            audit_event("knowledge.relation.delete.error", {"error": str(e)}, user)
+            ns.abort(400, f"Relation delete failed: {e}")
+
+
+@ns.route("/provenance")
+class KnowledgeProvenance(Resource):
+    @jwt_required()
+    def get(self):
+        entity_id = (request.args.get("entityId") or "").strip()
+        predicate = (request.args.get("predicate") or "").strip()
+        direction = (request.args.get("direction") or "both").strip()  # out|in|both
+        limit = int(request.args.get("limit", 100))
+        if not entity_id:
+            ns.abort(400, "entityId is required")
+        # Build directional match
+        if direction == "out":
+            rel_match = "(e:Entity {id: $eid})-[r:RELATED]->(x)"
+        elif direction == "in":
+            rel_match = "(x)-[r:RELATED]->(e:Entity {id: $eid})"
+        else:
+            rel_match = "(e:Entity {id: $eid})-[r:RELATED]-(x)"
+        where_pred = " WHERE r.type = $pred " if predicate else " "
+        cypher = (
+            f"MATCH {rel_match} "
+            f"{where_pred} "
+            "RETURN r ORDER BY r.lastUpdated DESC LIMIT $limit"
+        )
+        user = get_jwt_identity()
+        try:
+            rows = get_client().run_query(cypher, {"eid": entity_id, "pred": predicate, "limit": limit})
+            rels = [r[0] for r in rows]
+            audit_event("knowledge.provenance.get", {"entity": entity_id, "count": len(rels)}, user)
+            return {"relations": rels, "count": len(rels)}
+        except Exception as e:
+            audit_event("knowledge.provenance.error", {"error": str(e)}, user)
+            ns.abort(400, f"Provenance fetch failed: {e}")

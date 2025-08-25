@@ -38,6 +38,8 @@ Key variables:
 - n8n integration:
   - `N8N_BASE_URL=http://localhost:5678`
   - `N8N_API_KEY` (optional)
+- Integrations security:
+  - `INTEGRATION_SECRET=<shared-token>` (required to authorize inbound webhooks like `/integrations/n8n/runs`)
 - Vector search (optional):
   - `ENABLE_VECTOR_SEARCH=true`
   - `OPENAI_API_KEY=...`
@@ -107,6 +109,17 @@ This starts Flask-SocketIO (gevent) on `HOST`/`PORT`.
 
 Health check: `GET /system/health` → `{ "status": "ok" }`
 
+## OpenAPI / API Docs
+
+- OpenAPI and Swagger UI are provided by Flask-RESTX.
+- In a default dev run, open the interactive docs at:
+  - Swagger UI: `/` (root) or `/doc` depending on RESTX config
+  - OpenAPI JSON: `/swagger.json`
+- All endpoints indicate security requirements (JWT where applicable), request/response models, and example payloads.
+
+Key namespaces exposed in `api/app.py`:
+- `auth`, `agents`, `workflows`, `system`, `config`, `tools`, `knowledge`, `conversations`, `kg_admin`, `kg_consensus`, `integrations`.
+
 ## WebSocket usage
 
 - Endpoint: same origin as API (Socket.IO). Connect with optional JWT:
@@ -130,7 +143,10 @@ socket.emit("message:send", { conversation_id: "<cid>", message: "Hello" });
   - `room:joined` → { conversation_id }
   - `history` → { conversation_id, messages: [...] }
   - `message:new` → persisted message payload
+  - `permission:updated` → { conversation_id, user_id, role }
+  - `permission:revoked` → { conversation_id, user_id }
   - `agent:update` → forwarded from RabbitMQ for the conversation
+  - `agent_run:update` → run status updates (rooms: `agent:{agent_id}` and `{execution_id}`)
   - `error` → { message }
 
 ## RabbitMQ routing (agent updates)
@@ -167,6 +183,27 @@ The API triggers these from:
 
 Ensure `N8N_BASE_URL` (and optionally `N8N_API_KEY`) are set in the API environment.
 
+### Inbound run update webhook (integrations)
+
+The API also exposes a secured inbound webhook for run status updates from n8n (or other orchestrators):
+
+- `POST /integrations/n8n/runs`
+- Headers: `X-Integration-Token: <INTEGRATION_SECRET>`
+- Body:
+
+```json
+{
+  "execution_id": "run-12-1724612981",
+  "status": "completed",
+  "result": { "ok": true },
+  "metrics": { "latency_ms": 842 }
+}
+```
+
+This updates the corresponding `AgentRun` row and emits a WebSocket `agent_run:update` event.
+
+Set `INTEGRATION_SECRET` in the API environment. Requests without a matching token are rejected.
+
 ## Quick test
 
 Use the included simple integration test (requires API running locally and default envs):
@@ -201,12 +238,29 @@ Audit events are written as JSONL to `AUDIT_LOG_PATH` (default `./audit.log`). L
 - Knowledge API: `api/resources/knowledge.py`
 - Conversations API: `api/resources/conversations.py`
 - Agents API: `api/resources/agents.py`
+  - `POST /agents/{id}/execute` (returns `execution_id`)
+  - `GET /agents/{id}/runs?status=&limit=&offset=`
+  - `GET /agents/{id}/metrics`
 - Workflows API: `api/resources/workflows.py`
 - WebSocket events: `api/ws/events.py`
 - n8n client: `api/utils/n8n_client.py`
 - Embeddings helper: `api/utils/embeddings.py`
 - Audit helper: `api/utils/audit.py`
 - Neo4j helper: `api/utils/neo4j_client.py`
+ - Integrations API: `api/resources/integrations.py` (inbound `POST /integrations/n8n/runs`)
+ - Knowledge API additions:
+   - `POST /knowledge/relations/update`
+   - `POST /knowledge/relations/delete`
+   - `GET /knowledge/provenance?entityId=...&predicate=...&direction=out|in|both&limit=...`
+ - Conversations API additions:
+   - `GET /conversations/{cid}/messages?limit=&offset=&role=&since=&until=`
+   - `GET /conversations/{cid}/messages/search?q=&limit=`
+   - `GET /conversations/{cid}/participants`
+   - `POST /conversations/{cid}/participants` (accepts optional `role`)
+   - `DELETE /conversations/{cid}/participants/{user_id}`
+   - `GET /conversations/{cid}/permissions`
+   - `POST /conversations/{cid}/permissions` (set role)
+   - `DELETE /conversations/{cid}/permissions/{user_id}`
 
 ## KG Integrity Monitoring (Scheduler)
 
