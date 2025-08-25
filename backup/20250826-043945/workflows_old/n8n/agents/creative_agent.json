@@ -1,0 +1,23 @@
+{
+  "name": "Creative Agent (AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "chatInput": [
+            { "role": "system", "content": "You are the Creative Agent. Generate content and ideate. Use knowledge context when available." },
+            { "role": "user", "content": "{{ $json.brief }}" }
+          ]
+        },
+        "options": { "temperature": 0.8, "maxTokens": 1800 }
+      },
+      "id": "creative-ai-agent",
+      "name": "Creative AI Agent",
+      "type": "ai.agent.placeholder",
+      "typeVersion": 1,
+      "position": [500, 240]
+    }
+  ],
+  "connections": {}
+}

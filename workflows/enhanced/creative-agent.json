@@ -1,0 +1,45 @@
+{
+  "name": "Creative Agent",
+  "nodes": [
+    {"parameters": {"path": "creative/compose", "responseCode": 200, "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}}}, "id": "Webhook", "name": "Webhook Creative Compose", "type": "n8n-nodes-base.webhook", "typeVersion": 1, "position": [200, 200]},
+
+    {"parameters": {"functionCode": "const b=$json||{};const brief=b.brief||b.prompt||'';if(!brief)throw new Error('brief/prompt required');const kind=(b.kind||'text').toLowerCase();const style=b.style||{};const targets=b.targets||['draft'];const iterations=Math.max(1,Math.min(5,Number(b.iterations||2)));const qualityThreshold=Number(b.qualityThreshold||0.75);const model=b.model||null;const assets=b.assets||{};const feedback=b.feedback||null;const s3=b.s3||{};const preSignedUrl=s3.preSignedUrl||s3.presigned_url||b.preSignedUrl||null;const bucket=s3.bucket||null;const key=s3.key||null;return [{json:{brief,kind,style,targets,iterations,qualityThreshold,model,assets,feedback, preSignedUrl, bucket, key}}];"}, "id": "Normalize", "name": "Normalize Input", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [460, 200]},
+
+    {"parameters": {"url": "={{$json.toolsBase || $env.N8N_BASE_URL || 'http://localhost:5678'}}/webhook/creative/tools/style-management", "sendBody": true, "jsonParameters": true, "bodyParametersJson": "={{ { action: 'evaluate', content: $json.brief, guidelines: $json.style } }}"}, "id": "PreEval", "name": "Pre-Evaluate Brief Style", "type": "n8n-nodes-base.httpRequest", "typeVersion": 1, "position": [720, 100]},
+
+    {"parameters": {"url": "={{$json.toolsBase || $env.N8N_BASE_URL || 'http://localhost:5678'}}/webhook/creative/tools/content-generate", "sendBody": true, "jsonParameters": true, "bodyParametersJson": "={{ { kind: $json.kind, prompt: $json.brief, style: $json.style, model: $json.model, assets: $json.assets } }}"}, "id": "Generate", "name": "Generate Initial", "type": "n8n-nodes-base.httpRequest", "typeVersion": 1, "position": [980, 200]},
+
+    {"parameters": {"url": "={{$json.toolsBase || $env.N8N_BASE_URL || 'http://localhost:5678'}}/webhook/creative/tools/style-management", "sendBody": true, "jsonParameters": true, "bodyParametersJson": "={{ { action: 'evaluate', content: $json.output?.text || $json.output?.data || $json, guidelines: $json.style } }}"}, "id": "Evaluate", "name": "Evaluate Output Style", "type": "n8n-nodes-base.httpRequest", "typeVersion": 1, "position": [1240, 200]},
+
+    {"parameters": {"functionCode": "// Compute quality score and decide refinement\nconst evalr=items[0].json?.result||items[0].json;const score=Number(evalr?.score||0);const threshold=$json.qualityThreshold;return [{json:{score,threshold,needsRefine: score<threshold, eval: evalr}}];"}, "id": "Assess", "name": "Assess Quality", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [1500, 200]},
+
+    {"parameters": {"conditions": {"boolean": [{"value1": "={{$json.needsRefine}}", "operation": "isTrue"}]}}, "id": "IfRefine", "name": "If Needs Refinement", "type": "n8n-nodes-base.if", "typeVersion": 1, "position": [1760, 200]},
+
+    {"parameters": {"promptType": "chat", "provider": "openai", "model": "gpt-4", "systemMessage": "You are a creative reviser. Improve the draft based on evaluation findings and optional user feedback. Maintain brand/style.", "inputKey": "={{ { draft: $json.output || $json, feedback: $json.feedback, eval: $json.eval, style: $json.style } }}", "toolsAgent": false, "temperature": 0.7, "maxTokens": 1000}, "id": "Revise", "name": "AI Revise", "type": "n8n-nodes-base.aiAgent", "typeVersion": 1, "position": [2020, 160]},
+
+    {"parameters": {"functionCode": "// Increment iteration and re-evaluate\nconst iter=Number($json.iter||1)+1;return [{json:{...$json, iter}}];"}, "id": "NextIter", "name": "Next Iteration", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [2280, 160]},
+
+    {"parameters": {"functionCode": "// Finalize\nreturn [{json:{status:'ok', output:$json.output||$json, evaluation:$json.eval, iterations:$json.iter||1}}];"}, "id": "Respond", "name": "Respond", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [2280, 40]}
+    ,
+    {"parameters": {"conditions": {"string": [{"value1": "={{$json.preSignedUrl}}", "operation": "isEmpty"}]}}, "id": "IfUpload", "name": "If Upload Provided", "type": "n8n-nodes-base.if", "typeVersion": 1, "position": [2020, 40]},
+
+    {"parameters": {"url": "={{$json.toolsBase || $env.N8N_BASE_URL || 'http://localhost:5678'}}/webhook/creative/tools/storage-s3", "sendBody": true, "jsonParameters": true, "bodyParametersJson": "={{ { content: { kind: $json.kind, output: $json.output||$json }, contentType: 'application/json', preSignedUrl: $json.preSignedUrl, key: $json.key, bucket: $json.bucket } }}"}, "id": "Upload", "name": "Store to S3 (presigned)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 1, "position": [2140, 40]}
+  ],
+  "connections": {
+    "Webhook Creative Compose": {"main": [[{"node": "Normalize Input", "type": "main", "index": 0}]]},
+    "Normalize Input": {"main": [[{"node": "Pre-Evaluate Brief Style", "type": "main", "index": 0}]]},
+    "Pre-Evaluate Brief Style": {"main": [[{"node": "Generate Initial", "type": "main", "index": 0}]]},
+    "Generate Initial": {"main": [[{"node": "Evaluate Output Style", "type": "main", "index": 0}]]},
+    "Evaluate Output Style": {"main": [[{"node": "Assess Quality", "type": "main", "index": 0}]]},
+    "Assess Quality": {"main": [[{"node": "If Needs Refinement", "type": "main", "index": 0}]]},
+    "If Needs Refinement": {"main": [[{"node": "AI Revise", "type": "main", "index": 0}], [{"node": "If Upload Provided", "type": "main", "index": 0}]]},
+    "AI Revise": {"main": [[{"node": "Next Iteration", "type": "main", "index": 0}]]},
+    "Next Iteration": {"main": [[{"node": "Evaluate Output Style", "type": "main", "index": 0}]]},
+    "If Upload Provided": {"main": [[{"node": "Respond", "type": "main", "index": 0}], [{"node": "Store to S3 (presigned)", "type": "main", "index": 0}]]},
+    "Store to S3 (presigned)": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]},
+    "Respond": {}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["creative", "agent"],
+  "versionId": "creative-agent-v1"
+}

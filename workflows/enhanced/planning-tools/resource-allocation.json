@@ -1,0 +1,40 @@
+{
+  "name": "Planning Tools - Resource Allocation",
+  "nodes": [
+    {
+      "parameters": {"path": "planning/tools/resource-allocation", "responseCode": 200, "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}}},
+      "id": "Webhook",
+      "name": "Webhook Resource Allocation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Greedy skill-aware allocation with simple capacity\nconst agents=$json.agents||[]; const tasks=$json.tasks||[]; const constraints=$json.constraints||{};\nconst capacity=Object.fromEntries(agents.map(a=>[a.name, (a.capacity&&a.capacity.units)||40]));\nconst skills=Object.fromEntries(agents.map(a=>[a.name, new Set(a.skills||[])]));\nconst assignment={}; for(const t of tasks){ assignment[t.id]={ task:t, assignee:null }; }\nfunction canDo(agent, task){ const req=new Set(task.skills||[]); for(const s of req){ if(!skills[agent]||!skills[agent].has(s)) return false; } return true; }\nfor(const t of tasks){ const candidates=agents.filter(a=>canDo(a.name,t)).sort((a,b)=> (capacity[b.name]||0)-(capacity[a.name]||0)); if(candidates.length){ const a=candidates[0]; assignment[t.id].assignee=a.name; capacity[a.name]-=(t.effort||4); } else { // fallback: least loaded
+  const a=agents.sort((x,y)=>(capacity[y.name]||0)-(capacity[x.name]||0))[0]; if(a){ assignment[t.id].assignee=a.name; capacity[a.name]-=(t.effort||4); }
+} }\nconst summary=Object.entries(assignment).map(([id,o])=>({id, assignee:o.assignee}));\nreturn [{ json: { allocation: { assignments: summary, remainingCapacity: capacity } } }];"
+      },
+      "id": "Allocate",
+      "name": "Allocate Resources",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {"functionCode": "return [{ json: { status: 'ok', allocation: $json.allocation } }];"},
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Resource Allocation": {"main": [[{"node": "Allocate Resources", "type": "main", "index": 0}]]},
+    "Allocate Resources": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["planning", "tools"],
+  "versionId": "planning-tools-allocation-v1"
+}

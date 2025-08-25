@@ -1,0 +1,24 @@
+{
+  "name": "Planning Agent (AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "chatInput": [
+            { "role": "system", "content": "You are the Planning Agent. Break down tasks into subtasks and timelines." },
+            { "role": "user", "content": "{{ $json.goal }}" }
+          ]
+        },
+        "tools": [ { "name": "neo4j_query" }, { "name": "postgres_query" } ],
+        "options": { "temperature": 0.2, "maxTokens": 1600 }
+      },
+      "id": "planning-ai-agent",
+      "name": "Planning AI Agent",
+      "type": "ai.agent.placeholder",
+      "typeVersion": 1,
+      "position": [520, 220]
+    }
+  ],
+  "connections": {}
+}

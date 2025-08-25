@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "description": "Catalog of n8n nodes available as tools for AI agents.",
+  "tools": [
+    {
+      "name": "http_request",
+      "nodeType": "n8n-nodes-base.httpRequest",
+      "description": "Make HTTP requests to REST APIs.",
+      "parametersSchema": {
+        "type": "object",
+        "properties": {
+          "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+          "url": { "type": "string" },
+          "headers": { "type": "object" },
+          "query": { "type": "object" },
+          "body": { "type": "object" },
+          "responseFormat": { "type": "string", "enum": ["json", "text", "file"] }
+        },
+        "required": ["method", "url"]
+      }
+    },
+    {
+      "name": "postgres_query",
+      "nodeType": "n8n-nodes-base.postgres",
+      "description": "Execute SQL against Postgres.",
+      "parametersSchema": {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "enum": ["executeQuery", "insert", "update"] },
+          "query": { "type": "string" },
+          "values": { "type": "array" }
+        },
+        "required": ["operation"]
+      }
+    },
+    {
+      "name": "neo4j_query",
+      "nodeType": "n8n-nodes-base.neo4j",
+      "description": "Execute Cypher queries in Neo4j.",
+      "parametersSchema": {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "enum": ["executeQuery"] },
+          "query": { "type": "string" },
+          "parameters": { "type": "object" }
+        },
+        "required": ["operation", "query"]
+      }
+    },
+    {
+      "name": "rabbitmq_publish",
+      "nodeType": "n8n-nodes-base.rabbitmq",
+      "description": "Publish messages to RabbitMQ queues.",
+      "parametersSchema": {
+        "type": "object",
+        "properties": {
+          "queue": { "type": "string" },
+          "message": { "type": "object" },
+          "options": { "type": "object" }
+        },
+        "required": ["queue", "message"]
+      }
+    },
+    {
+      "name": "file_write",
+      "nodeType": "n8n-nodes-base.writeBinaryFile",
+      "description": "Write binary content to a file.",
+      "parametersSchema": {
+        "type": "object",
+        "properties": {
+          "fileName": { "type": "string" },
+          "data": { "type": "string", "description": "Base64 data" }
+        },
+        "required": ["fileName", "data"]
+      }
+    },
+    {
+      "name": "math_evaluate",
+      "nodeType": "n8n-nodes-base.math",
+      "description": "Evaluate mathematical expressions.",
+      "parametersSchema": {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "enum": ["evaluateExpression"] },
+          "expression": { "type": "string" }
+        },
+        "required": ["operation", "expression"]
+      }
+    }
+  ]
+}

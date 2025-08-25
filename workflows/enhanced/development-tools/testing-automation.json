@@ -1,0 +1,38 @@
+{
+  "name": "Development Tools - Testing Automation",
+  "nodes": [
+    {
+      "parameters": {"path": "development/tools/testing-automation", "responseCode": 200, "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}}},
+      "id": "Webhook",
+      "name": "Webhook Testing Automation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const plan=$json.plan||{}; const languages=$json.languages||['python','javascript'];\nconst strategies=languages.map(l=>({ language:l, framework: l==='python'?'pytest': l==='javascript'?'jest': l==='java'?'junit': l==='csharp'?'xunit': l==='go'?'go test':'custom', coverage: '>=80%', static_analysis: true }));\nconst qualityGates={ lint:true, format:true, security_scan:true, coverage_threshold:80 };\nconst ciSteps=['install deps','lint','test','coverage','security scan'];\nreturn [{ json: { testing: { strategies, qualityGates, ciSteps } } }];"
+      },
+      "id": "Plan",
+      "name": "Generate Testing Plan",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {"functionCode": "return [{ json: { status: 'ok', testing: $json.testing } }];"},
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Testing Automation": {"main": [[{"node": "Generate Testing Plan", "type": "main", "index": 0}]]},
+    "Generate Testing Plan": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["development", "tools"],
+  "versionId": "development-tools-testing-v1"
+}

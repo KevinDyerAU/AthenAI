@@ -1,0 +1,24 @@
+{
+  "name": "Execution Agent (AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "chatInput": [
+            { "role": "system", "content": "You are the Execution Agent. Orchestrate tool usage to complete tasks." },
+            { "role": "user", "content": "{{ $json.execution_brief }}" }
+          ]
+        },
+        "tools": [ { "name": "http_request" }, { "name": "rabbitmq_publish" }, { "name": "postgres_query" } ],
+        "options": { "temperature": 0.2, "maxTokens": 1600 }
+      },
+      "id": "execution-ai-agent",
+      "name": "Execution AI Agent",
+      "type": "ai.agent.placeholder",
+      "typeVersion": 1,
+      "position": [520, 220]
+    }
+  ],
+  "connections": {}
+}

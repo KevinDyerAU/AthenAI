@@ -1,0 +1,24 @@
+{
+  "name": "Analysis Agent (AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "chatInput": [
+            { "role": "system", "content": "You are the Analysis Agent. Process data and derive insights. You can request tools for SQL, HTTP, math." },
+            { "role": "user", "content": "{{ $json.dataset_description }}" }
+          ]
+        },
+        "tools": [ { "name": "postgres_query" }, { "name": "http_request" }, { "name": "math_evaluate" } ],
+        "options": { "temperature": 0.1, "maxTokens": 1800 }
+      },
+      "id": "analysis-ai-agent",
+      "name": "Analysis AI Agent",
+      "type": "ai.agent.placeholder",
+      "typeVersion": 1,
+      "position": [520, 220]
+    }
+  ],
+  "connections": {}
+}

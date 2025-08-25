@@ -1,0 +1,152 @@
+{
+  "name": "Enhanced Master Orchestration Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "chatInput": [
+            {
+              "role": "system",
+              "content": "You are the Master Orchestration Agent for the Enhanced AI Agent OS. Your role is to analyze incoming tasks, determine the best approach for completion, and coordinate with specialized agents. You have access to the consciousness substrate through Neo4j and can delegate tasks to: Research Agent, Creative Agent, Analysis Agent, Development Agent, Communication Agent, Planning Agent, Execution Agent, and QA Agent. Use the Node-as-Tools registry to select and invoke tools."
+            },
+            {
+              "role": "user",
+              "content": "Task: {{ $json.task_description }}\nPriority: {{ $json.priority }}\nRequester: {{ $json.requested_by }}\nContext: {{ $json.context }}"
+            }
+          ]
+        },
+        "tools": [
+          {
+            "name": "query_consciousness_substrate",
+            "description": "Query the Neo4j consciousness substrate for relevant knowledge and context",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "type": "string",
+                  "description": "Cypher query to execute against Neo4j"
+                }
+              },
+              "required": ["query"]
+            }
+          },
+          {
+            "name": "delegate_to_agent",
+            "description": "Delegate a subtask to a specialized agent",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "agent_type": {
+                  "type": "string",
+                  "enum": [
+                    "research",
+                    "creative",
+                    "analysis",
+                    "development",
+                    "communication",
+                    "planning",
+                    "execution",
+                    "qa"
+                  ]
+                },
+                "task_description": { "type": "string" },
+                "parameters": { "type": "object" },
+                "priority": {
+                  "type": "string",
+                  "enum": ["low", "normal", "high", "urgent"]
+                },
+                "delegation_id": { "type": "string" }
+              },
+              "required": ["agent_type", "task_description"]
+            }
+          },
+          {
+            "name": "update_task_status",
+            "description": "Update task status in the substrate (Postgres)",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "task_id": { "type": "string" },
+                "status": { "type": "string" },
+                "progress": { "type": "number" },
+                "notes": { "type": "string" }
+              },
+              "required": ["task_id", "status"]
+            }
+          }
+        ],
+        "options": { "temperature": 0.3, "maxTokens": 2000 }
+      },
+      "id": "master-orchestration-ai-agent",
+      "name": "Master Orchestration AI Agent",
+      "type": "ai.agent.placeholder",
+      "typeVersion": 1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "additionalFields": {}
+      },
+      "id": "neo4j-consciousness-query",
+      "name": "Neo4j Consciousness Query",
+      "type": "n8n-nodes-base.neo4j",
+      "typeVersion": 1,
+      "position": [300, 500]
+    },
+    {
+      "parameters": {
+        "queue": "agent_delegation",
+        "message": {
+          "agent_type": "={{ $json.agent_type }}",
+          "task_description": "={{ $json.task_description }}",
+          "parameters": "={{ $json.parameters }}",
+          "priority": "={{ $json.priority }}",
+          "delegated_by": "master_orchestration",
+          "delegation_id": "={{ $json.delegation_id }}",
+          "timestamp": "={{ new Date().toISOString() }}"
+        },
+        "options": {
+          "durable": true,
+          "priority": "={{ $json.priority === 'urgent' ? 10 : $json.priority === 'high' ? 7 : $json.priority === 'normal' ? 5 : 1 }}"
+        }
+      },
+      "id": "rabbitmq-agent-delegation",
+      "name": "RabbitMQ Agent Delegation",
+      "type": "n8n-nodes-base.rabbitmq",
+      "typeVersion": 1,
+      "position": [700, 400]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "collection": "task_status",
+        "updateKey": "task_id",
+        "fieldsToUpdate": {
+          "status": "={{ $json.status }}",
+          "progress": "={{ $json.progress }}",
+          "updated_at": "={{ new Date().toISOString() }}",
+          "notes": "={{ $json.notes }}"
+        }
+      },
+      "id": "update-task-status",
+      "name": "Update Task Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "master-orchestration-ai-agent": {
+      "main": [
+        [
+          { "node": "neo4j-consciousness-query", "type": "main", "index": 0 },
+          { "node": "rabbitmq-agent-delegation", "type": "main", "index": 0 },
+          { "node": "update-task-status", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  }
+}

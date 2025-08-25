@@ -204,6 +204,69 @@ This updates the corresponding `AgentRun` row and emits a WebSocket `agent_run:u
 
 Set `INTEGRATION_SECRET` in the API environment. Requests without a matching token are rejected.
 
+## Enhanced AI workflows (n8n)
+
+Enhanced AI orchestration workflows are provided under `workflows/enhanced/`. Import them via n8n UI → Import from file:
+
+- `workflows/enhanced/master-orchestration-agent.json`
+- `workflows/enhanced/agent-handlers.json`
+- `workflows/enhanced/research-agent.json`
+- `workflows/enhanced/creative-agent.json`
+- `workflows/enhanced/analysis-agent.json`
+- `workflows/enhanced/development-agent.json`
+- `workflows/enhanced/communication-agent.json`
+- `workflows/enhanced/planning-agent.json`
+- `workflows/enhanced/execution-agent.json`
+- `workflows/enhanced/quality-assurance-agent.json`
+
+Credentials required in n8n (or via environment):
+- OpenAI API (for AI Agent nodes)
+- Neo4j (bolt URI, username, password)
+- Postgres (task memory persistence)
+- RabbitMQ (agent status events)
+
+Ensure the API has `N8N_BASE_URL` and (optionally) `N8N_API_KEY` set. The master orchestration flow coordinates specialized agents and reports progress via RabbitMQ and WebSockets. A previous copy of any legacy workflows was backed up under `backup/<timestamp>/workflows_old/` during migration.
+
+See the detailed import and validation guide: `documentation/workflows/Enhanced-Workflows-Guide.md`.
+
+### Import enhanced workflows via API (PowerShell)
+
+Set environment variables then import all enhanced workflows:
+
+```powershell
+$Env:N8N_BASE_URL = "http://localhost:5678"
+$Env:N8N_API_KEY  = "<your-n8n-api-key>"
+powershell -ExecutionPolicy Bypass -File scripts\enhanced\n8n-import-enhanced.ps1
+# To update if already present:
+# powershell -ExecutionPolicy Bypass -File scripts\enhanced\n8n-import-enhanced.ps1 -UpdateIfExists
+```
+
+### Validate credentials and node resolution
+
+Verify that required credentials (OpenAI, Neo4j, Postgres, RabbitMQ) referenced in the enhanced workflows are available in n8n:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\enhanced\n8n-validate.ps1
+```
+
+The report lists RequiredTypes/MissingTypes and RequiredNamed/MissingNamed per workflow. Create any missing credentials in n8n and re-run until resolved.
+
+### Run a basic master orchestration test
+
+Discover the master webhook from JSON, activate the workflow, and trigger it with a sample payload:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\enhanced\n8n-run-master-orchestration.ps1 -Activate
+```
+
+If `WebhookBase` differs from `N8N_BASE_URL`, pass `-WebhookBase "https://your-public-n8n"`. Provide a custom payload with `-SamplePayloadPath path\to\payload.json`.
+
+### Related files
+
+- Scripts: `scripts/enhanced/n8n-import-enhanced.ps1`, `scripts/enhanced/n8n-validate.ps1`, `scripts/enhanced/n8n-run-master-orchestration.ps1`
+- Workflows: `workflows/enhanced/*.json`
+- Guide: `documentation/workflows/Enhanced-Workflows-Guide.md`
+
 ## Quick test
 
 Use the included simple integration test (requires API running locally and default envs):

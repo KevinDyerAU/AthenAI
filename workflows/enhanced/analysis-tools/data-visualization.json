@@ -1,0 +1,38 @@
+{
+  "name": "Analysis Tools - Data Visualization",
+  "nodes": [
+    {
+      "parameters": {"path": "analysis/tools/data-visualization", "responseCode": 200, "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "application/json"}]}}},
+      "id": "Webhook",
+      "name": "Webhook Data Visualization",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Build Vega-Lite specs for common charts based on dataset\nconst ds=$json.dataset||[]; const timeKey=$json.timeKey||null; const target=$json.target||null;\nfunction inferNumericKeys(){ const keys=[...new Set(ds.flatMap(r=>Object.keys(r||{})))]; return keys.filter(k=>ds.every(r=>{const v=r?.[k]; return v===null||v===undefined||v===''||!isNaN(Number(v));})).slice(0); }\nconst numerics=inferNumericKeys();\nconst specs=[];\nif(timeKey && target){ specs.push({ title: 'Time Series of '+target, mark: 'line', data: { name: 'table' }, encoding: { x: {field: timeKey, type: 'temporal'}, y: {field: target, type: 'quantitative'} } }); }\nif(target){ specs.push({ title: 'Distribution of '+target, mark: 'bar', data: { name: 'table' }, encoding: { x: {bin: true, field: target, type: 'quantitative'}, y: {aggregate: 'count', type: 'quantitative'} } }); }\nif(numerics.length>=2){ specs.push({ title: 'Scatter: '+numerics[0]+' vs '+numerics[1], mark: 'point', data: { name: 'table' }, encoding: { x: {field: numerics[0], type: 'quantitative'}, y: {field: numerics[1], type: 'quantitative'} } }); }\nconst recommendations=[]; if(!timeKey) recommendations.push('Provide timeKey to enable time series charts'); if(!target) recommendations.push('Provide target to enable target distributions');\nreturn [{ json: { charts: specs, recommendations } }];"
+      },
+      "id": "BuildSpecs",
+      "name": "Build Visualization Specs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {"functionCode": "return [{ json: { status: 'ok', charts: $json.charts, recommendations: $json.recommendations } }];"},
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Data Visualization": {"main": [[{"node": "Build Visualization Specs", "type": "main", "index": 0}]]},
+    "Build Visualization Specs": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["analysis", "tools"],
+  "versionId": "analysis-tools-viz-v1"
+}

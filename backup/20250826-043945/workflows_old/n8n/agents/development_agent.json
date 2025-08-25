@@ -1,0 +1,24 @@
+{
+  "name": "Development Agent (AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "chatInput": [
+            { "role": "system", "content": "You are the Development Agent. Generate code and solve technical problems. Use HTTP and DB tools as needed." },
+            { "role": "user", "content": "{{ $json.issue_description }}" }
+          ]
+        },
+        "tools": [ { "name": "http_request" }, { "name": "postgres_query" } ],
+        "options": { "temperature": 0.2, "maxTokens": 1800 }
+      },
+      "id": "development-ai-agent",
+      "name": "Development AI Agent",
+      "type": "ai.agent.placeholder",
+      "typeVersion": 1,
+      "position": [520, 220]
+    }
+  ],
+  "connections": {}
+}

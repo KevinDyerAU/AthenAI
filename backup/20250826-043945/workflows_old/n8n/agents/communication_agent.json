@@ -1,0 +1,24 @@
+{
+  "name": "Communication Agent (AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "chatInput": [
+            { "role": "system", "content": "You are the Communication Agent. Manage external notifications and integrations." },
+            { "role": "user", "content": "{{ $json.message_brief }}" }
+          ]
+        },
+        "tools": [ { "name": "http_request" }, { "name": "rabbitmq_publish" } ],
+        "options": { "temperature": 0.3, "maxTokens": 1500 }
+      },
+      "id": "communication-ai-agent",
+      "name": "Communication AI Agent",
+      "type": "ai.agent.placeholder",
+      "typeVersion": 1,
+      "position": [520, 220]
+    }
+  ],
+  "connections": {}
+}

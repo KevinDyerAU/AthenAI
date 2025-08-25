@@ -1,0 +1,52 @@
+{
+  "name": "Research Agent (AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "chatInput": [
+            { "role": "system", "content": "You are the Research Agent. Search, synthesize, and cite sources. Use tools: http_request, neo4j_query, postgres_query." },
+            { "role": "user", "content": "{{ $json.task_description }}" }
+          ]
+        },
+        "tools": [
+          { "name": "http_request" },
+          { "name": "neo4j_query" },
+          { "name": "postgres_query" }
+        ],
+        "options": { "temperature": 0.2, "maxTokens": 1800 }
+      },
+      "id": "research-ai-agent",
+      "name": "Research AI Agent",
+      "type": "ai.agent.placeholder",
+      "typeVersion": 1,
+      "position": [520, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}"
+      },
+      "id": "http-request",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [300, 350]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}"
+      },
+      "id": "neo4j-query",
+      "name": "Neo4j Query",
+      "type": "n8n-nodes-base.neo4j",
+      "typeVersion": 1,
+      "position": [300, 480]
+    }
+  ],
+  "connections": {
+    "research-ai-agent": { "main": [ [ { "node": "http-request", "type": "main", "index": 0 }, { "node": "neo4j-query", "type": "main", "index": 0 } ] ] }
+  }
+}

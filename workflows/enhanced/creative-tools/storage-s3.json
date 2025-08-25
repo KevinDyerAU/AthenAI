@@ -1,0 +1,20 @@
+{
+  "name": "Creative Tool — Storage (S3 presigned)",
+  "nodes": [
+    {"parameters": {"path": "creative/tools/storage-s3", "responseCode": 200}, "id": "Webhook", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 1, "position": [200, 200]},
+
+    {"parameters": {"functionCode": "const b=$json||{};const content=b.content;const contentType=b.contentType||'application/json';const preSignedUrl=b.preSignedUrl||b.presigned_url||null;const key=b.key||null;const bucket=b.bucket||$env.S3_BUCKET||null; if(!content) throw new Error('content required'); if(!preSignedUrl) throw new Error('preSignedUrl required (server-side signing not implemented)'); return [{json:{content, contentType, preSignedUrl, key, bucket}}];"}, "id": "Normalize", "name": "Normalize", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [460, 200]},
+
+    {"parameters": {"url": "={{$json.preSignedUrl}}", "method": "PUT", "sendBody": true, "jsonParameters": false, "options": {"ignoreResponseCode": true}, "headerParametersUi": {"parameter": [{"name":"Content-Type","value":"={{$json.contentType}}"}]}, "bodyContent": "={{ typeof $json.content === 'string' ? $json.content : JSON.stringify($json.content) }}"}, "id": "Upload", "name": "HTTP PUT to S3 (presigned)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 1, "position": [720, 200]},
+
+    {"parameters": {"functionCode": "return [{json:{status:'ok', key:$json.key, bucket:$json.bucket, etag: items[0].json?.ETag || null}}];"}, "id": "Respond", "name": "Respond", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [980, 200]}
+  ],
+  "connections": {
+    "Webhook": {"main": [[{"node": "Normalize", "type": "main", "index": 0}]]},
+    "Normalize": {"main": [[{"node": "HTTP PUT to S3 (presigned)", "type": "main", "index": 0}]]},
+    "HTTP PUT to S3 (presigned)": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["creative", "storage"],
+  "versionId": "creative-storage-s3-v1"
+}

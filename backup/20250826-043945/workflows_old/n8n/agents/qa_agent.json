@@ -1,0 +1,24 @@
+{
+  "name": "QA Agent (AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "chatInput": [
+            { "role": "system", "content": "You are the QA Agent. Validate outputs, run checks, and ensure quality." },
+            { "role": "user", "content": "{{ $json.output_to_validate }}" }
+          ]
+        },
+        "tools": [ { "name": "http_request" }, { "name": "math_evaluate" } ],
+        "options": { "temperature": 0.1, "maxTokens": 1200 }
+      },
+      "id": "qa-ai-agent",
+      "name": "QA AI Agent",
+      "type": "ai.agent.placeholder",
+      "typeVersion": 1,
+      "position": [520, 220]
+    }
+  ],
+  "connections": {}
+}
