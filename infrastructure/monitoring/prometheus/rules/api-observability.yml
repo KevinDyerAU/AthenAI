@@ -1,0 +1,45 @@
+groups:
+  - name: api-observability
+    interval: 30s
+    rules:
+      - alert: APIHighErrorRate
+        expr: |
+          sum(rate(api_requests_total{status_code=~"5.."}[5m]))
+            /
+          clamp_min(sum(rate(api_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API high 5xx error rate (>5% for 10m)"
+          runbook: "Check API logs in Loki filtered by X-Correlation-ID and affected endpoints."
+
+      - alert: APIExtremeLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum(rate(api_request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p99 latency above 2s"
+          runbook: "Inspect recent deployments, database latency, and external dependencies."
+
+      - alert: APIDown
+        expr: |
+          absent(sum(rate(api_requests_total[5m])))
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API metrics absent"
+          runbook: "API may be down or /metrics not reachable. Check service status and Prometheus target health."
+
+      - alert: WebSocketConnectionSpike
+        expr: |
+          increase(websocket_connections_active[5m]) > 100
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Spike in WebSocket connections (>100 in 5m)"
+          runbook: "Validate traffic source and capacity; consider rate limiting if unexpected."

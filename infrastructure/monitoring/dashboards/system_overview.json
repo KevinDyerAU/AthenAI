@@ -1,0 +1,62 @@
+{
+  "title": "System Overview",
+  "uid": "neo-system-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "API RPS",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "sum(rate(api_requests_total[5m]))", "legendFormat": "rps"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "API 5xx rate",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [
+        {"expr": "sum(rate(api_requests_total{status_code=\"500\"}[5m]))", "legendFormat": "5xx rps"}
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "API p95 latency (s)",
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active WS connections",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [
+        {"expr": "websocket_connections_active", "legendFormat": "active"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Knowledge ops (rate)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10},
+      "targets": [
+        {"expr": "sum by(operation_type,status)(rate(knowledge_operations_total[5m]))", "legendFormat": "{{operation_type}} {{status}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Consciousness ops latency (s)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (le)(rate(consciousness_query_duration_seconds_bucket[5m])))", "legendFormat": "p95"},
+        {"expr": "rate(consciousness_query_duration_seconds_sum[5m]) / rate(consciousness_query_duration_seconds_count[5m])", "legendFormat": "avg"}
+      ]
+    }
+  ]
+}

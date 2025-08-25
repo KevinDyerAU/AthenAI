@@ -5,6 +5,7 @@ from ..extensions import db
 from ..models import Agent, AgentRun
 from ..schemas import AgentSchema, AgentCreateSchema, AgentUpdateSchema
 from ..utils.audit import audit_event
+from ..metrics import record_agent_workflow
 from ..utils.n8n_client import trigger_webhook
 from datetime import datetime
 
@@ -112,8 +113,11 @@ class AgentExecute(Resource):
         try:
             trigger_webhook("webhook/agent-execute", payload)
             audit_event("agent.execute.queued", payload, None)
+            # Record workflow queued/start as a success event with zero duration (completion recorded elsewhere if available)
+            record_agent_workflow(workflow_name=agent.name or "agent", agent_type=agent.type or "generic", duration_sec=0.0, success=True)
         except Exception as e:
             audit_event("agent.execute.error", {"agent_id": agent.id, "error": str(e)}, None)
+            record_agent_workflow(workflow_name=agent.name or "agent", agent_type=agent.type or "generic", duration_sec=0.0, success=False)
         return {"message": "Execution started", "agent_id": agent.id, "execution_id": execution_id}, 202
 
 

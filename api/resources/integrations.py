@@ -5,6 +5,7 @@ from flask_restx import Namespace, Resource, fields
 from ..extensions import db, socketio
 from ..models import Agent, AgentRun
 from ..utils.audit import audit_event
+from ..metrics import record_agent_workflow
 
 ns = Namespace("integrations", description="Inbound integration webhooks (e.g., n8n)")
 
@@ -63,6 +64,19 @@ class N8nRunUpdate(Resource):
 
         db.session.commit()
         audit_event("agent.run.update", {"execution_id": execution_id, "status": status}, None)
+
+        # Emit Prometheus workflow metrics on terminal states
+        if status in ("completed", "failed"):
+            try:
+                duration_sec = (run.duration_ms or 0) / 1000.0
+                record_agent_workflow(
+                    workflow_name=agent.name if agent and agent.name else "agent",
+                    agent_type=agent.type if agent and agent.type else "generic",
+                    duration_sec=duration_sec,
+                    success=(status == "completed"),
+                )
+            except Exception:
+                pass
         # Emit WS update for real-time consumers: room by execution_id and by agent_id
         try:
             payload = {

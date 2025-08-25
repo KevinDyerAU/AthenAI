@@ -18,6 +18,21 @@ scrape_configs:
   - job_name: docker
     pipeline_stages:
       - docker: {}
+      # If application logs are JSON, try to parse a correlation_id field
+      - json:
+          expressions:
+            correlation_id: correlation_id
+            msg: message
+      # Fallback: try to extract X-Correlation-ID from plain text logs
+      - regex:
+          expression: 
+            '.*(?:X-Correlation-ID|correlation_id)[=: ]+([a-fA-F0-9\-]{8,})'
+          source: msg
+          # If msg is not present (non-JSON), apply on the raw log line
+          # Note: promtail uses extracted "log" field by docker stage
+      - labels:
+          correlation_id:
+            from: correlation_id
     static_configs:
       - targets: [localhost]
         labels:

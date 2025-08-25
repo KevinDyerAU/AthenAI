@@ -352,6 +352,53 @@ Requires API running locally with default `HOST/PORT` and no extra setup.
 
 Audit events are written as JSONL to `AUDIT_LOG_PATH` (default `./audit.log`). Logging failures never block runtime.
 
+## Monitoring and Observability
+
+The API exposes Prometheus metrics, ships logs to Loki with correlation IDs, and provides Grafana dashboards and Prometheus alert rules.
+
+- **Metrics endpoint**: `GET /metrics` (no auth)
+  - API request counters, status codes, and latency histograms
+  - WebSocket connections and message counters
+  - Database metrics for Postgres and Neo4j:
+    - `database_operations_total{database_type,operation,status}`
+    - `database_query_duration_seconds_{bucket,sum,count}{database_type}`
+  - Agent workflows:
+    - `agent_workflow_executions_total{workflow_name,agent_type,status}`
+    - `agent_workflow_duration_seconds_{bucket,sum,count}`
+
+- **Code instrumentation**
+  - Flask app middleware and metric registry: `api/metrics.py`, `api/app.py`
+  - WebSockets: `api/ws/events.py`
+  - Postgres (SQLAlchemy) listeners: `api/db_metrics.py` initialized in `create_app()`
+  - Neo4j client timings: `api/utils/neo4j_client.py`
+  - Agent runs: queued in `api/resources/agents.py`; terminal completion metrics in `api/resources/integrations.py`
+
+- **Grafana dashboards** (JSON provisioning)
+  - System overview: `infrastructure/monitoring/dashboards/system_overview.json`
+  - API operations: `infrastructure/monitoring/dashboards/api_operations.json`
+  - DB performance: `infrastructure/monitoring/dashboards/db_performance.json`
+  - Agent coordination: `infrastructure/monitoring/dashboards/agent_coordination.json`
+  - Import via Grafana or mount into Grafana's dashboards folder.
+
+- **Prometheus alert rules**
+  - API observability: `infrastructure/monitoring/prometheus/rules/api-observability.yml`
+  - DB observability: `infrastructure/monitoring/prometheus/rules/db-observability.yml`
+  - Ensure Prometheus loads rules (e.g., `rule_files: ["rules/**/*.yml"]`).
+
+- **Loki / Promtail correlation IDs**
+  - Promtail config: `infrastructure/monitoring/loki/promtail-config.yml`
+    - Parses JSON logs to extract `correlation_id`
+    - Fallback regex for plain logs to capture `X-Correlation-ID`
+  - Filter logs in Grafana Explore: `{job="docker", correlation_id="<value>"}`
+  - The API propagates `X-Correlation-ID` per request so you can pivot logs ↔ metrics.
+
+### Quick validation
+
+1. Hit a few API endpoints, open `/metrics`, confirm counters/histograms move.
+2. In Grafana, open the four dashboards and verify timeseries populate.
+3. In Prometheus, check alerts page; optionally simulate load/errors to trigger warnings.
+4. In Loki, find a request log, copy `correlation_id`, then filter by it to trace the request.
+
 ## Repository paths of interest
 
 - API entry/registration: `api/app.py`

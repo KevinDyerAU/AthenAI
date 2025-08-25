@@ -18,6 +18,9 @@ from .resources.substrate import ns as substrate_ns
 from .ws.events import register_socketio_events
 from .errors import register_error_handlers
 from .security.jwt_callbacks import register_jwt_callbacks
+from .metrics import init_metrics
+from .db_metrics import init_sqlalchemy_metrics
+import logging
 
 
 def create_app() -> Flask:
@@ -30,6 +33,10 @@ def create_app() -> Flask:
     jwt.init_app(app)
     register_jwt_callbacks(jwt)
     CORS(app, resources={r"/*": {"origins": app.config.get("CORS_ORIGINS", "*")}}, supports_credentials=True)
+
+    # Metrics and logging
+    init_metrics(app)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
 
     # Root route for convenience (register BEFORE RESTX so it takes precedence)
     @app.route("/")
@@ -73,8 +80,10 @@ def create_app() -> Flask:
     # Error handlers
     register_error_handlers(app)
 
-    # DB create (dev only)
+    # DB create (dev only) and attach SQLAlchemy metrics listeners
     with app.app_context():
+        # Attach query timing metrics
+        init_sqlalchemy_metrics(db)
         if app.config.get("DB_AUTO_CREATE", False):
             db.create_all()
 

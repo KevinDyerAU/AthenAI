@@ -1,0 +1,46 @@
+{
+  "title": "API Operations",
+  "uid": "neo-api-ops",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Requests per second by method",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "sum by(method)(rate(api_requests_total[5m]))", "legendFormat": "{{method}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx and 4xx rates",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "sum(rate(api_requests_total{status_code=\"500\"}[5m]))", "legendFormat": "5xx"},
+        {"expr": "sum(rate(api_requests_total{status_code=\"404\"}[5m]))", "legendFormat": "404"},
+        {"expr": "sum(rate(api_requests_total{status_code=\"401\"}[5m]))", "legendFormat": "401"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency quantiles (p50/p95/p99)",
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum(rate(api_request_duration_seconds_bucket[5m])) by (le,endpoint))", "legendFormat": "p50 {{endpoint}}"},
+        {"expr": "histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[5m])) by (le,endpoint))", "legendFormat": "p95 {{endpoint}}"},
+        {"expr": "histogram_quantile(0.99, sum(rate(api_request_duration_seconds_bucket[5m])) by (le,endpoint))", "legendFormat": "p99 {{endpoint}}"}
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top endpoints by error rate",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 17},
+      "transformations": [{"id": "organize"}],
+      "targets": [
+        {"expr": "topk(10, sum by(endpoint)(rate(api_requests_total{status_code=\"500\"}[15m])))", "legendFormat": "{{endpoint}}"}
+      ]
+    }
+  ]
+}

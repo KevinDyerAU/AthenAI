@@ -1,5 +1,7 @@
 from neo4j import GraphDatabase
+import time
 from ..config import get_config
+from ..metrics import record_database_operation
 
 
 class Neo4jClient:
@@ -11,18 +13,42 @@ class Neo4jClient:
             self._driver.close()
 
     def run_query(self, query: str, parameters: dict | None = None):
-        with self._driver.session() as session:
-            return list(session.run(query, parameters or {}))
+        t0 = time.time()
+        ok = True
+        try:
+            with self._driver.session() as session:
+                return list(session.run(query, parameters or {}))
+        except Exception:
+            ok = False
+            raise
+        finally:
+            record_database_operation("neo4j", "run_query", time.time() - t0, success=ok)
 
     def read_tx(self, fn, *args, **kwargs):
         """Execute a read transaction with a callback(tx, *args, **kwargs). Returns callback result."""
-        with self._driver.session(default_access_mode="READ") as session:
-            return session.execute_read(fn, *args, **kwargs)
+        t0 = time.time()
+        ok = True
+        try:
+            with self._driver.session(default_access_mode="READ") as session:
+                return session.execute_read(fn, *args, **kwargs)
+        except Exception:
+            ok = False
+            raise
+        finally:
+            record_database_operation("neo4j", "read_tx", time.time() - t0, success=ok)
 
     def write_tx(self, fn, *args, **kwargs):
         """Execute a write transaction with a callback(tx, *args, **kwargs). Returns callback result."""
-        with self._driver.session(default_access_mode="WRITE") as session:
-            return session.execute_write(fn, *args, **kwargs)
+        t0 = time.time()
+        ok = True
+        try:
+            with self._driver.session(default_access_mode="WRITE") as session:
+                return session.execute_write(fn, *args, **kwargs)
+        except Exception:
+            ok = False
+            raise
+        finally:
+            record_database_operation("neo4j", "write_tx", time.time() - t0, success=ok)
 
     def run_queries_atomic(self, queries: list[tuple[str, dict | None]]):
         """Run multiple Cypher statements atomically in a single write transaction.
@@ -35,8 +61,16 @@ class Neo4jClient:
                 res = tx.run(q, (p or {}))
                 results.append(list(res))
             return results
-        with self._driver.session(default_access_mode="WRITE") as session:
-            return session.execute_write(_runner)
+        t0 = time.time()
+        ok = True
+        try:
+            with self._driver.session(default_access_mode="WRITE") as session:
+                return session.execute_write(_runner)
+        except Exception:
+            ok = False
+            raise
+        finally:
+            record_database_operation("neo4j", "run_queries_atomic", time.time() - t0, success=ok)
 
 
 def get_client() -> Neo4jClient:

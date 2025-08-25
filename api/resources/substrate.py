@@ -9,6 +9,11 @@ from ..utils.consciousness_substrate import (
     EnhancedConsciousnessSubstrate,
     ConflictError,
 )
+from ..metrics import (
+    record_knowledge_operation,
+    record_consciousness_operation,
+)
+import time
 
 ns = Namespace("substrate", description="Enhanced consciousness substrate operations")
 
@@ -79,6 +84,7 @@ class CreateEntity(Resource):
     @ns.expect(create_entity_model, validate=True)
     def post(self):
         payload = request.get_json() or {}
+        t0 = time.time()
         ecs = _ecs()
         try:
             entity_id = ecs.create_knowledge_entity(
@@ -88,6 +94,8 @@ class CreateEntity(Resource):
                 embedding=payload.get("embedding"),
                 metadata=payload.get("metadata") or {},
             )
+            record_knowledge_operation("create", payload.get("entity_type", "generic"), time.time() - t0, success=True)
+            record_consciousness_operation("create_entity", time.time() - t0, success=True)
             return {"id": entity_id}, 201
         finally:
             ecs.close()
@@ -99,6 +107,7 @@ class UpdateEntity(Resource):
     @ns.expect(update_entity_model, validate=True)
     def patch(self, entity_id: str):
         payload = request.get_json() or {}
+        t0 = time.time()
         ecs = _ecs()
         try:
             try:
@@ -108,8 +117,12 @@ class UpdateEntity(Resource):
                     updated_by=str(payload.get("updated_by")),
                     conflict_resolution=str(payload.get("strategy", "merge")),
                 )
+                record_knowledge_operation("update", payload.get("updates", {}).get("entity_type", "generic"), time.time() - t0, success=True)
+                record_consciousness_operation("update_entity", time.time() - t0, success=True)
                 return {"version": new_version}
             except ConflictError as ce:
+                record_knowledge_operation("update", payload.get("updates", {}).get("entity_type", "generic"), time.time() - t0, success=False)
+                record_consciousness_operation("update_entity", time.time() - t0, success=False)
                 return {"error": "conflict", "details": str(ce)}, 409
         finally:
             ecs.close()
@@ -121,6 +134,7 @@ class SemanticSearch(Resource):
     @ns.expect(semantic_search_model, validate=True)
     def post(self):
         payload = request.get_json() or {}
+        t0 = time.time()
         ecs = _ecs()
         try:
             res = ecs.semantic_search(
@@ -128,6 +142,9 @@ class SemanticSearch(Resource):
                 limit=int(payload.get("limit", 10)),
                 threshold=float(payload.get("threshold", 0.7)),
             )
+            dur = time.time() - t0
+            record_knowledge_operation("search", "embedding", dur, success=True)
+            record_consciousness_operation("semantic_search", dur, success=True)
             return {"results": res, "count": len(res)}
         finally:
             ecs.close()
@@ -138,8 +155,10 @@ class Provenance(Resource):
     @jwt_required()
     def get(self, entity_id: str):
         ecs = _ecs()
+        t0 = time.time()
         try:
             res = ecs.get_knowledge_provenance(entity_id)
+            record_consciousness_operation("provenance", time.time() - t0, success=True)
             return {"history": res, "count": len(res)}
         finally:
             ecs.close()
@@ -151,6 +170,7 @@ class Traverse(Resource):
     @ns.expect(traverse_model, validate=True)
     def post(self):
         payload = request.get_json() or {}
+        t0 = time.time()
         ecs = _ecs()
         try:
             res = ecs.traverse_related(
@@ -159,6 +179,7 @@ class Traverse(Resource):
                 rel_types=payload.get("rel_types"),
                 limit=int(payload.get("limit", 50)),
             )
+            record_consciousness_operation("traverse", time.time() - t0, success=True)
             return {"nodes": res, "count": len(res)}
         finally:
             ecs.close()
@@ -170,12 +191,14 @@ class Centrality(Resource):
     @ns.expect(centrality_model, validate=True)
     def post(self):
         payload = request.get_json() or {}
+        t0 = time.time()
         ecs = _ecs()
         try:
             res = ecs.centrality_pagerank(
                 top_n=int(payload.get("top_n", 20)),
                 relationship=str(payload.get("relationship", "SIMILAR_TO")),
             )
+            record_consciousness_operation("centrality", time.time() - t0, success=True)
             return {"scores": res, "count": len(res)}
         finally:
             ecs.close()
@@ -187,11 +210,13 @@ class Communities(Resource):
     @ns.expect(communities_model, validate=True)
     def post(self):
         payload = request.get_json() or {}
+        t0 = time.time()
         ecs = _ecs()
         try:
             res = ecs.community_detection_louvain(
                 write_property=str(payload.get("write_property", "communityId"))
             )
+            record_consciousness_operation("communities", time.time() - t0, success=True)
             return {"result": res}
         finally:
             ecs.close()
@@ -204,8 +229,10 @@ class Temporal(Resource):
         since = request.args.get("since")
         until = request.args.get("until")
         ecs = _ecs()
+        t0 = time.time()
         try:
             res = ecs.temporal_evolution(entity_id, since_iso=since, until_iso=until)
+            record_consciousness_operation("temporal", time.time() - t0, success=True)
             return {"timeline": res}
         finally:
             ecs.close()

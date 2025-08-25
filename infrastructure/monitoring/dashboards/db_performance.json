@@ -1,0 +1,43 @@
+{
+  "title": "DB Performance",
+  "uid": "neo-db-perf",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Postgres ops rate by type",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "sum by(operation,status)(rate(database_operations_total{database_type=\"postgres\"}[5m]))", "legendFormat": "pg {{operation}} {{status}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Postgres query latency (avg & p95)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (le)(rate(database_query_duration_seconds_bucket{database_type=\"postgres\"}[5m])))", "legendFormat": "pg p95"},
+        {"expr": "sum(rate(database_query_duration_seconds_sum{database_type=\"postgres\"}[5m])) / sum(rate(database_query_duration_seconds_count{database_type=\"postgres\"}[5m]))", "legendFormat": "pg avg"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Neo4j ops rate by type",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "sum by(operation,status)(rate(database_operations_total{database_type=\"neo4j\"}[5m]))", "legendFormat": "neo4j {{operation}} {{status}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Neo4j query latency (avg & p95)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (le)(rate(database_query_duration_seconds_bucket{database_type=\"neo4j\"}[5m])))", "legendFormat": "neo4j p95"},
+        {"expr": "sum(rate(database_query_duration_seconds_sum{database_type=\"neo4j\"}[5m])) / sum(rate(database_query_duration_seconds_count{database_type=\"neo4j\"}[5m]))", "legendFormat": "neo4j avg"}
+      ]
+    }
+  ]
+}

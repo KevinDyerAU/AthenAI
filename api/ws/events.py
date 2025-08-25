@@ -10,6 +10,10 @@ from flask_jwt_extended import decode_token
 
 from ..utils.neo4j_client import get_client
 from ..utils.rabbitmq import start_consumer
+from ..metrics import (
+    record_websocket_connection,
+    record_websocket_message,
+)
 
 
 class WebSocketManager:
@@ -135,6 +139,7 @@ class WebSocketManager:
                 "connected_at": datetime.utcnow().isoformat(),
                 "rooms": set(),
             }
+            record_websocket_connection(True)
             emit("connected", {"connection_id": self.active[request.sid]["connection_id"], "user_id": uid})
             # Ensure background consumer is running
             self._start_agent_updates_consumer()
@@ -142,6 +147,7 @@ class WebSocketManager:
         @sio.on("disconnect")
         def on_disconnect():
             self.active.pop(request.sid, None)
+            record_websocket_connection(False)
 
         # ------------ Room management ------------
         @sio.on("room:join")
@@ -160,6 +166,7 @@ class WebSocketManager:
             if info:
                 info["rooms"].add(cid)
             emit("room:joined", {"conversation_id": cid})
+            record_websocket_message("room:join", "in")
             # Send last messages as history
             emit("history", {"conversation_id": cid, "messages": self._fetch_history(cid, limit=50)})
 
@@ -172,6 +179,7 @@ class WebSocketManager:
             info = self.active.get(request.sid)
             if info and cid in info["rooms"]:
                 info["rooms"].remove(cid)
+            record_websocket_message("room:leave", "in")
 
         # ------------ Messaging ------------
         @sio.on("message:send")
@@ -188,7 +196,9 @@ class WebSocketManager:
                 emit("error", {"message": "access_denied"})
                 return
             msg = self._store_message(cid, uid, role, content)
+            record_websocket_message("message", "in")
             emit("message:new", msg, room=cid)
+            record_websocket_message("message", "out")
 
         @sio.on("history:get")
         @self._auth_required
@@ -199,7 +209,9 @@ class WebSocketManager:
             if not cid or not self._verify_conversation_access(cid, uid):
                 emit("error", {"message": "access_denied"})
                 return
+            record_websocket_message("history:get", "in")
             emit("history", {"conversation_id": cid, "messages": self._fetch_history(cid, limit=limit)})
+            record_websocket_message("history", "out")
 
 
 def register_socketio_events(socketio: SocketIO):
