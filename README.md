@@ -118,7 +118,64 @@ Health check: `GET /system/health` → `{ "status": "ok" }`
 - All endpoints indicate security requirements (JWT where applicable), request/response models, and example payloads.
 
 Key namespaces exposed in `api/app.py`:
-- `auth`, `agents`, `workflows`, `system`, `config`, `tools`, `knowledge`, `conversations`, `kg_admin`, `kg_consensus`, `integrations`.
+- `auth`, `agents`, `workflows`, `system`, `config`, `tools`, `knowledge`, `conversations`, `kg_admin`, `kg_consensus`, `integrations`, `substrate`.
+
+## Consciousness Substrate (Neo4j) — Usage
+
+The enhanced substrate provides provenance, conflict handling, semantic search, and graph reasoning over knowledge entities.
+
+Documentation: `documentation/database/CONSCIOUSNESS_SUBSTRATE.md`
+
+Key endpoints (JWT required):
+
+- Create entity
+  ```bash
+  curl -X POST "$API_BASE_URL/api/substrate/entity" \
+    -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+    -d '{
+      "content": "Initial knowledge content",
+      "entity_type": "note",
+      "created_by": "user-123",
+      "metadata": {"source": "example"}
+    }'
+  ```
+
+- Update entity with conflict strategy (`merge|latest_wins|first_wins|strict`)
+  ```bash
+  curl -X PATCH "$API_BASE_URL/api/substrate/entity/<entity_id>" \
+    -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+    -d '{
+      "updates": {"content": "Revised"},
+      "updated_by": "user-123",
+      "strategy": "merge"
+    }'
+  ```
+
+- Semantic search (requires vector index on `KnowledgeEntity.embedding`)
+  ```bash
+  curl -X POST "$API_BASE_URL/api/substrate/search/semantic" \
+    -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+    -d '{
+      "embedding": [0,0, ... 1536 dims ...],
+      "limit": 5,
+      "threshold": 0.7
+    }'
+  ```
+
+- Provenance
+  ```bash
+  curl -H "Authorization: Bearer $JWT" \
+    "$API_BASE_URL/api/substrate/provenance/<entity_id>"
+  ```
+
+- Traverse related
+  ```bash
+  curl -X POST "$API_BASE_URL/api/substrate/traverse" \
+    -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+    -d '{"start_id": "<entity_id>", "max_depth": 2}'
+  ```
+
+Programmatic access is available via `api/utils/consciousness_substrate.py`.
 
 ## WebSocket usage
 

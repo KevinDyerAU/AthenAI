@@ -14,6 +14,7 @@ from .resources.conversations import ns as conversations_ns
 from .resources.kg_admin import ns as kg_admin_ns
 from .resources.kg_consensus import ns as kg_consensus_ns
 from .resources.integrations import ns as integrations_ns
+from .resources.substrate import ns as substrate_ns
 from .ws.events import register_socketio_events
 from .errors import register_error_handlers
 from .security.jwt_callbacks import register_jwt_callbacks
@@ -63,6 +64,7 @@ def create_app() -> Flask:
     restx_api.add_namespace(kg_admin_ns)
     restx_api.add_namespace(kg_consensus_ns)
     restx_api.add_namespace(integrations_ns)
+    restx_api.add_namespace(substrate_ns)
 
     # Socket.IO
     register_socketio_events(socketio)
