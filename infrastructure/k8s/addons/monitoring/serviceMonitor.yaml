@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api-service
+  namespace: neov3
+  labels:
+    release: prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: api-service
+  namespaceSelector:
+    matchNames:
+      - neov3
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s

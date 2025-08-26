@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: neov3-dev
+resources:
+  - ../../base
+namePrefix: dev-
+patches:
+  - target:
+      kind: Deployment
+      name: api-service
+    patch: |
+      - op: replace
+        path: /metadata/namespace
+        value: neov3-dev
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+configMapGenerator:
+  - name: neov3-config
+    behavior: merge
+    literals:
+      - FLASK_ENV=development
+images:
+  - name: neov3/api
+    newTag: dev
+  - name: neov3/agent-lifecycle-manager
+    newTag: dev
+  - name: neov3/knowledge-drift
+    newTag: dev
+  - name: neov3/self-healing-monitor
+    newTag: dev

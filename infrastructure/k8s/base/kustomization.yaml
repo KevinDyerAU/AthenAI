@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: neov3
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - hpa.yaml
+  - agent-lifecycle-deployment.yaml
+  - agent-lifecycle-service.yaml
+  - knowledge-drift-deployment.yaml
+  - knowledge-drift-service.yaml
+  - self-healing-deployment.yaml
+images:
+  - name: neov3/api
+    newTag: latest
+  - name: neov3/agent-lifecycle-manager
+    newTag: latest
+  - name: neov3/knowledge-drift
+    newTag: latest
+  - name: neov3/self-healing-monitor
+    newTag: latest

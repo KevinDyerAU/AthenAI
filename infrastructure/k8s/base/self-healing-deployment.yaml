@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: self-healing-monitor
+  namespace: neov3
+  labels:
+    app: self-healing-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: self-healing-monitor
+  template:
+    metadata:
+      labels:
+        app: self-healing-monitor
+    spec:
+      containers:
+        - name: self-healing-monitor
+          image: neov3/self-healing-monitor:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8083
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          envFrom:
+            - configMapRef:
+                name: neov3-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+}

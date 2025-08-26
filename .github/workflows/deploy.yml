@@ -1,0 +1,275 @@
+name: Deploy NeoV3
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (dev or prod)"
+        required: true
+        default: "dev"
+        type: choice
+        options: [dev, prod]
+      namespace:
+        description: "Kubernetes namespace"
+        required: false
+        default: "neov3"
+      api_image:
+        description: "API image name (registry/name)"
+        required: false
+        default: "neov3/api"
+      api_tag:
+        description: "API image tag to deploy"
+        required: true
+        default: "dev"
+      push_image:
+        description: "Build and push API image before deploy"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      approve_rollback:
+        description: "Only for prod: set to true to perform rollback"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy-dev:
+    if: inputs.environment == 'dev'
+    runs-on: ubuntu-latest
+    env:
+      ENV: dev
+      NAMESPACE: ${{ inputs.namespace }}
+      API_IMAGE: ${{ inputs.api_image }}
+      API_TAG: ${{ inputs.api_tag }}
+      OVERLAY_DIR: infrastructure/k8s/overlays/dev
+      WORK_DIR: kustomize-work
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR (optional)
+        if: inputs.push_image == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        if: inputs.push_image == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          file: ./api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:${{ env.API_TAG }}
+
+      - name: Install kubectl
+        run: |
+          curl -sSL -o kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          sudo apt-get update && sudo apt-get install -y rsync
+
+      - name: Install kustomize
+        run: |
+          curl -s https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+        run: |
+          if [ -z "$KUBECONFIG_B64" ]; then echo "KUBECONFIG_B64 secret is required" && exit 1; fi
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          kubectl version --client=true
+          kubectl get ns || true
+
+      - name: Prepare kustomize workdir and set images
+        run: |
+          rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
+          rsync -a "$OVERLAY_DIR/" "$WORK_DIR/"
+          cd "$WORK_DIR"
+          # Set/override API image tag
+          kustomize edit set image neov3/api=${API_IMAGE}:${API_TAG}
+          # Show final diff
+          echo "\nResolved images:" && cat kustomization.yaml | sed -n '/images:/,/^$/p' || true
+
+      - name: Apply manifests
+        id: apply
+        run: |
+          set -e
+          kubectl -n "$NAMESPACE" apply -k "$WORK_DIR"
+          echo "Waiting for api-service rollout..."
+          kubectl -n "$NAMESPACE" rollout status deploy/api-service --timeout=180s
+
+      - name: Run validation script
+        id: validate
+        run: |
+          sudo apt-get update && sudo apt-get install -y curl
+          chmod +x scripts/deploy/validate.sh || true
+          bash scripts/deploy/validate.sh "$NAMESPACE" api-service 18080
+
+      - name: Rollback on failure (DEV only)
+        if: failure() && steps.apply.outcome == 'success'
+        run: |
+          echo "Validation failed, attempting rollback of api-service (dev)"
+          kubectl -n "$NAMESPACE" rollout undo deploy/api-service || true
+          kubectl -n "$NAMESPACE" rollout status deploy/api-service --timeout=120s || true
+
+      - name: Upload diagnostics (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-diagnostics-${{ env.ENV }}
+          path: |
+            ${{ env.WORK_DIR }}/kustomization.yaml
+            k8s-describe.txt
+          if-no-files-found: warn
+
+      - name: Collect diagnostics details
+        if: failure()
+        run: |
+          echo "Collecting diagnostics..."
+          (kubectl -n "$NAMESPACE" get all; echo; kubectl -n "$NAMESPACE" describe deploy api-service; echo; kubectl -n "$NAMESPACE" logs deploy/api-service --tail=200) > k8s-describe.txt || true
+
+  deploy-prod:
+    if: inputs.environment == 'prod'
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+    env:
+      ENV: prod
+      NAMESPACE: ${{ inputs.namespace }}
+      API_IMAGE: ${{ inputs.api_image }}
+      API_TAG: ${{ inputs.api_tag }}
+      OVERLAY_DIR: infrastructure/k8s/overlays/prod
+      WORK_DIR: kustomize-work
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR (optional)
+        if: inputs.push_image == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        if: inputs.push_image == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          file: ./api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:${{ env.API_TAG }}
+
+      - name: Install kubectl
+        run: |
+          curl -sSL -o kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          sudo apt-get update && sudo apt-get install -y rsync
+
+      - name: Install kustomize
+        run: |
+          curl -s https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+        run: |
+          if [ -z "$KUBECONFIG_B64" ]; then echo "KUBECONFIG_B64 secret is required" && exit 1; fi
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          kubectl version --client=true
+          kubectl get ns || true
+
+      - name: Prepare kustomize workdir and set images
+        run: |
+          rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
+          rsync -a "$OVERLAY_DIR/" "$WORK_DIR/"
+          cd "$WORK_DIR"
+          kustomize edit set image neov3/api=${API_IMAGE}:${API_TAG}
+          echo "\nResolved images:" && sed -n '/images:/,/^$/p' kustomization.yaml || true
+
+      - name: Apply manifests
+        id: apply
+        run: |
+          set -e
+          kubectl -n "$NAMESPACE" apply -k "$WORK_DIR"
+          echo "Waiting for api-service rollout..."
+          kubectl -n "$NAMESPACE" rollout status deploy/api-service --timeout=300s
+
+      - name: Run validation script
+        id: validate
+        run: |
+          sudo apt-get update && sudo apt-get install -y curl
+          chmod +x scripts/deploy/validate.sh || true
+          bash scripts/deploy/validate.sh "$NAMESPACE" api-service 18080
+
+      - name: Upload diagnostics (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-diagnostics-${{ env.ENV }}
+          path: |
+            ${{ env.WORK_DIR }}/kustomization.yaml
+            k8s-describe.txt
+          if-no-files-found: warn
+
+      - name: Collect diagnostics details
+        if: failure()
+        run: |
+          echo "Collecting diagnostics..."
+          (kubectl -n "$NAMESPACE" get all; echo; kubectl -n "$NAMESPACE" describe deploy api-service; echo; kubectl -n "$NAMESPACE" logs deploy/api-service --tail=200) > k8s-describe.txt || true
+
+  rollback-prod:
+    if: inputs.environment == 'prod' && inputs.approve_rollback == 'true'
+    needs: [deploy-prod]
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+    env:
+      NAMESPACE: ${{ inputs.namespace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        run: |
+          curl -sSL -o kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+        run: |
+          if [ -z "$KUBECONFIG_B64" ]; then echo "KUBECONFIG_B64 secret is required" && exit 1; fi
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+
+      - name: Rollback api-service
+        run: |
+          echo "Rolling back api-service (manual approval provided)"
+          kubectl -n "$NAMESPACE" rollout undo deploy/api-service || true
+          kubectl -n "$NAMESPACE" rollout status deploy/api-service --timeout=300s || true

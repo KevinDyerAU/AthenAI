@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-drift-detector
+  namespace: neov3
+  labels:
+    app: knowledge-drift-detector
+spec:
+  selector:
+    app: knowledge-drift-detector
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+  type: ClusterIP

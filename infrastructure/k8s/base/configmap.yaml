@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neov3-config
+  namespace: neov3
+  labels:
+    app.kubernetes.io/name: neov3
+  annotations:
+    managed-by: kustomize
+data:
+  # Core API settings
+  FLASK_ENV: "production"
+  PORT: "8080"
+  LOG_LEVEL: "INFO"
+  # Security & Compliance toggles
+  COMPLIANCE_PERSIST_DISABLED: "true"
+  INCIDENT_PERSIST_DISABLED: "true"
+  FORCE_TLS: "true"
+  ENCRYPTION_AT_REST: "true"
+  KEY_ROTATION_DAYS: "90"
+  # RBAC policy path (mounted via ConfigMap/Volume if needed)
+  RBAC_POLICY_PATH: "/app/policies/policies.yaml"
