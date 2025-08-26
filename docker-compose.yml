@@ -106,7 +106,10 @@ services:
       until cypher-shell -a neo4j:7687 -u neo4j -p ${NEO4J_PASSWORD} 'RETURN 1' >/dev/null 2>&1; do
         echo 'Waiting for Neo4j...'; sleep 5;
       done;
-      cypher-shell -a neo4j:7687 -u neo4j -p ${NEO4J_PASSWORD} -f /docker-entrypoint-initdb.d/01-init.cypher;
+      for f in /docker-entrypoint-initdb.d/*.cypher; do
+        echo \"Applying $f\";
+        cypher-shell -a neo4j:7687 -u neo4j -p ${NEO4J_PASSWORD} -f \"$f\" || exit 1;
+      done;
       echo 'Neo4j init completed.'
       "
 
@@ -502,6 +505,11 @@ services:
       SECRET_KEY: ${API_SECRET_KEY}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: enhanced-ai-agent-api
+      AUTONOMY_ENABLED: ${AUTONOMY_ENABLED:-true}
+      AUTONOMY_API_EXPOSE: ${AUTONOMY_API_EXPOSE:-true}
+      AUTONOMY_DEFAULT_MONITOR_INTERVAL: ${AUTONOMY_DEFAULT_MONITOR_INTERVAL:-60}
+      AUTONOMY_SAFETY_MODE: ${AUTONOMY_SAFETY_MODE:-guarded}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
     ports:
       - "5000:5000"
       - "5001:5001"  # WebSocket or secondary
@@ -520,6 +528,107 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # =============================================================================
+  # AUTONOMOUS AGENT INFRASTRUCTURE
+  # =============================================================================
+  agent-lifecycle-manager:
+    image: python:3.11-slim
+    container_name: agent-lifecycle-manager
+    restart: unless-stopped
+    command: |
+      bash -lc '
+      set -e
+      pip install neo4j pika requests
+      python - <<"PY"
+      import time
+      print("Agent Lifecycle Manager placeholder running")
+      while True:
+          time.sleep(60)
+      PY
+      '
+    env_file:
+      - .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-ai_agent_user}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AUTONOMY_DEFAULT_MONITOR_INTERVAL: ${AUTONOMY_DEFAULT_MONITOR_INTERVAL:-60}
+      AUTONOMY_SAFETY_MODE: ${AUTONOMY_SAFETY_MODE:-guarded}
+    volumes:
+      - ./:/app:ro
+      - agent-config:/agents/config
+      - agent-implementations:/agents/implementations
+      - agent-metrics:/agents/metrics
+      - agent-logs:/agents/logs
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - enhanced-ai-network
+
+  knowledge-drift-detector:
+    image: python:3.11-slim
+    container_name: knowledge-drift-detector
+    restart: unless-stopped
+    command: |
+      bash -lc '
+      set -e
+      pip install neo4j pika
+      python - <<"PY"
+      import time
+      print("Knowledge Drift Detector placeholder running")
+      while True:
+          time.sleep(300)
+      PY
+      '
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-ai_agent_user}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/
+      DRIFT_SCAN_INTERVAL: ${DRIFT_SCAN_INTERVAL:-300}
+    volumes:
+      - agent-metrics:/agents/metrics
+      - agent-logs:/agents/logs
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - enhanced-ai-network
+
+  self-healing-monitor:
+    image: python:3.11-slim
+    container_name: self-healing-monitor
+    restart: unless-stopped
+    command: |
+      bash -lc '
+      set -e
+      pip install pika requests
+      python - <<"PY"
+      import time
+      print("Self-Healing Monitor placeholder running")
+      while True:
+          time.sleep(60)
+      PY
+      '
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-ai_agent_user}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/
+      HEALING_POLICY: ${HEALING_POLICY:-conservative}
+    volumes:
+      - agent-logs:/agents/logs
+      - agent-config:/agents/config
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - enhanced-ai-network
 
 # =============================================================================
 # PERSISTENT VOLUMES
@@ -666,6 +775,32 @@ volumes:
       type: none
       o: bind
       device: ./data/api
+
+  # Agent-specific Volumes
+  agent-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/agents/config
+  agent-implementations:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/agents/implementations
+  agent-metrics:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/agents/metrics
+  agent-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./enhanced-ai-agent-os/logs/agents
 
 # =============================================================================
 # NETWORKS

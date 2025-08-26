@@ -46,6 +46,32 @@ def publish_task(task: Dict[str, Any], routing_key: str = "tasks") -> bool:
         return False
 
 
+def publish_exchange(exchange: str, routing_key: str, message: Dict[str, Any]) -> bool:
+    """Publish a JSON message to a specific exchange with routing key.
+    Returns True if published, False if not configured/unavailable.
+    """
+    if pika is None:
+        return False
+    params = _get_connection_params()
+    if params is None:
+        return False
+    try:
+        connection = pika.BlockingConnection(params)
+        channel = connection.channel()
+        # Ensure topic exchange exists (idempotent)
+        channel.exchange_declare(exchange=exchange, exchange_type="topic", durable=True)
+        body = json.dumps(message).encode("utf-8")
+        channel.basic_publish(
+            exchange=exchange,
+            routing_key=routing_key,
+            body=body,
+            properties=pika.BasicProperties(content_type="application/json", delivery_mode=2),
+        )
+        connection.close()
+        return True
+    except Exception:
+        return False
+
 def start_consumer(queue: str, on_message: Callable[[dict], None], prefetch: int = 10) -> Optional[Callable[[], None]]:
     """Start a simple blocking consumer in the calling thread.
     Returns a stop function when started successfully, else None.

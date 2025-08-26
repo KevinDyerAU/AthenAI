@@ -41,6 +41,12 @@ Security: `.gitignore` is configured to ignore `.env` and `.env.*` but keep `*.e
 ## RabbitMQ
 - RABBITMQ_URL: amqp(s)://user:pass@host:port/vhost
 
+### Autonomy exchanges/queues (reference)
+Autonomous services use topic exchanges and DLQs defined in `infrastructure/rabbitmq/definitions.json`:
+- Exchanges: `agents.lifecycle`, `agents.health`, `agents.drift`, `dead-letter.exchange`
+- Queues: `agents.lifecycle.events`, `agents.health.metrics`, `agents.drift.alerts` with DLQs for each
+Bindings use routing keys `lifecycle.*`, `health.*`, `drift.*` respectively.
+
 ## n8n Integration
 - N8N_BASE_URL: Base URL of n8n instance.
 - N8N_API_KEY: API Key for authenticated calls.
@@ -82,6 +88,14 @@ Security: `.gitignore` is configured to ignore `.env` and `.env.*` but keep `*.e
 ## Features & Runtime
 - PARALLELISM_DEFAULT, MAX_RETRIES_DEFAULT, BACKOFF_STRATEGY, TIMEOUT_MS
 - FEATURE_ENABLE_* toggles
+
+### Autonomy
+- AUTONOMY_ENABLED: true|false — Enable agent lifecycle/drift monitors and endpoints
+- AUTONOMY_API_EXPOSE: true|false — Expose `/api/autonomy/*` endpoints (if feature gated)
+- AUTONOMY_DEFAULT_MONITOR_INTERVAL: integer seconds (e.g., 30)
+- AUTONOMY_SAFETY_MODE: conservative|balanced|aggressive — governs self-healing decision thresholds
+- DRIFT_SCAN_INTERVAL: integer seconds (e.g., 300)
+- HEALING_POLICY: e.g., restart_then_roll_back | restart_only | manual
 
 ## Compliance & Auditing
 - COMPLIANCE_STANDARDS: e.g., CAN-SPAM,GDPR,OWASP

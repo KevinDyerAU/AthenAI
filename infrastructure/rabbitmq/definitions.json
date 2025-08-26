@@ -7,5 +7,37 @@
   ],
   "permissions": [
     { "user": "ai_agent_queue_user", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*" }
+  ],
+  "exchanges": [
+    { "name": "dead-letter.exchange", "vhost": "/", "type": "topic", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "agents.lifecycle",      "vhost": "/", "type": "topic", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "agents.health",        "vhost": "/", "type": "topic", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "agents.drift",         "vhost": "/", "type": "topic", "durable": true, "auto_delete": false, "internal": false, "arguments": {} }
+  ],
+  "queues": [
+    { "name": "agent.lifecycle.events",  "vhost": "/", "durable": true, "auto_delete": false, "arguments": {"x-queue-type":"classic", "x-dead-letter-exchange":"dead-letter.exchange", "x-dead-letter-routing-key":"dlq.lifecycle"} },
+    { "name": "agent.health.monitor",    "vhost": "/", "durable": true, "auto_delete": false, "arguments": {"x-queue-type":"classic", "x-dead-letter-exchange":"dead-letter.exchange", "x-dead-letter-routing-key":"dlq.health"} },
+    { "name": "agent.drift.alerts",      "vhost": "/", "durable": true, "auto_delete": false, "arguments": {"x-queue-type":"classic", "x-dead-letter-exchange":"dead-letter.exchange", "x-dead-letter-routing-key":"dlq.drift"} },
+    { "name": "agent.selfhealing.coord", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {"x-queue-type":"classic", "x-dead-letter-exchange":"dead-letter.exchange", "x-dead-letter-routing-key":"dlq.selfhealing"} },
+
+    { "name": "dlq.lifecycle",   "vhost": "/", "durable": true, "auto_delete": false, "arguments": {"x-queue-type":"classic"} },
+    { "name": "dlq.health",      "vhost": "/", "durable": true, "auto_delete": false, "arguments": {"x-queue-type":"classic"} },
+    { "name": "dlq.drift",       "vhost": "/", "durable": true, "auto_delete": false, "arguments": {"x-queue-type":"classic"} },
+    { "name": "dlq.selfhealing", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {"x-queue-type":"classic"} }
+  ],
+  
+  "bindings": [
+    { "vhost": "/", "source": "agents.lifecycle", "destination": "agent.lifecycle.events",  "destination_type": "queue", "routing_key": "lifecycle.*", "arguments": {} },
+    { "vhost": "/", "source": "agents.health",   "destination": "agent.health.monitor",    "destination_type": "queue", "routing_key": "health.*",   "arguments": {} },
+    { "vhost": "/", "source": "agents.drift",    "destination": "agent.drift.alerts",      "destination_type": "queue", "routing_key": "drift.*",    "arguments": {} },
+    { "vhost": "/", "source": "agents.lifecycle", "destination": "agent.selfhealing.coord", "destination_type": "queue", "routing_key": "selfhealing.*", "arguments": {} },
+
+    { "vhost": "/", "source": "dead-letter.exchange", "destination": "dlq.lifecycle",   "destination_type": "queue", "routing_key": "dlq.lifecycle",   "arguments": {} },
+    { "vhost": "/", "source": "dead-letter.exchange", "destination": "dlq.health",      "destination_type": "queue", "routing_key": "dlq.health",      "arguments": {} },
+    { "vhost": "/", "source": "dead-letter.exchange", "destination": "dlq.drift",       "destination_type": "queue", "routing_key": "dlq.drift",       "arguments": {} },
+    { "vhost": "/", "source": "dead-letter.exchange", "destination": "dlq.selfhealing", "destination_type": "queue", "routing_key": "dlq.selfhealing", "arguments": {} }
+  ],
+  "policies": [
+    { "vhost": "/", "name": "ha-all", "pattern": ".*", "apply-to": "queues", "definition": { "ha-mode": "all" }, "priority": 0 }
   ]
 }

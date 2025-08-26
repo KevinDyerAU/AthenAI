@@ -1,0 +1,1198 @@
+{
+  "workflows": [
+    {
+      "name": "Agent Lifecycle Orchestration",
+      "id": "agent_lifecycle_orchestration",
+      "description": "Master workflow for orchestrating agent lifecycle operations",
+      "nodes": [
+        {
+          "parameters": {
+            "httpMethod": "POST",
+            "path": "agent-lifecycle-webhook",
+            "responseMode": "responseNode",
+            "options": {}
+          },
+          "id": "webhook_trigger",
+          "name": "Lifecycle Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 1,
+          "position": [240, 300],
+          "webhookId": "agent-lifecycle-webhook"
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "string": [
+                {
+                  "value1": "={{$json.action}}",
+                  "operation": "equal",
+                  "value2": "create_agent"
+                }
+              ]
+            }
+          },
+          "id": "action_router",
+          "name": "Action Router",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [460, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.webhook_trigger.json.api_base_url}}/api/v1/agents/lifecycle/create",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "httpHeaderAuth",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "need_type",
+                  "value": "={{$node.webhook_trigger.json.need_type}}"
+                },
+                {
+                  "name": "required_capabilities",
+                  "value": "={{$node.webhook_trigger.json.required_capabilities}}"
+                },
+                {
+                  "name": "performance_requirements",
+                  "value": "={{$node.webhook_trigger.json.performance_requirements}}"
+                },
+                {
+                  "name": "priority",
+                  "value": "={{$node.webhook_trigger.json.priority}}"
+                },
+                {
+                  "name": "justification",
+                  "value": "={{$node.webhook_trigger.json.justification}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "create_agent_request",
+          "name": "Create Agent Request",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [680, 200]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "string": [
+                {
+                  "value1": "={{$json.action}}",
+                  "operation": "equal",
+                  "value2": "deploy_agent"
+                }
+              ]
+            }
+          },
+          "id": "deploy_router",
+          "name": "Deploy Router",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [680, 400]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.webhook_trigger.json.api_base_url}}/api/v1/agents/lifecycle/deploy",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "httpHeaderAuth",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "implementation_id",
+                  "value": "={{$node.webhook_trigger.json.implementation_id}}"
+                },
+                {
+                  "name": "deployment_config",
+                  "value": "={{$node.webhook_trigger.json.deployment_config}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "deploy_agent",
+          "name": "Deploy Agent",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [900, 400]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "string": [
+                {
+                  "value1": "={{$json.success}}",
+                  "operation": "equal",
+                  "value2": "true"
+                }
+              ]
+            }
+          },
+          "id": "deployment_success_check",
+          "name": "Deployment Success Check",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [1120, 400]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.webhook_trigger.json.n8n_base_url}}/webhook/agent-monitoring",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "action",
+                  "value": "start_monitoring"
+                },
+                {
+                  "name": "agent_id",
+                  "value": "={{$node.deploy_agent.json.agent_id}}"
+                },
+                {
+                  "name": "container_id",
+                  "value": "={{$node.deploy_agent.json.container_id}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "start_monitoring",
+          "name": "Start Agent Monitoring",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1340, 300]
+        },
+        {
+          "parameters": {
+            "respondWith": "json",
+            "responseBody": "={{{\n  \"success\": true,\n  \"message\": \"Agent lifecycle operation completed\",\n  \"agent_id\": $node.deploy_agent.json.agent_id,\n  \"timestamp\": $now\n}}}"
+          },
+          "id": "success_response",
+          "name": "Success Response",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [1560, 300]
+        },
+        {
+          "parameters": {
+            "respondWith": "json",
+            "responseBody": "={{{\n  \"success\": false,\n  \"message\": \"Agent lifecycle operation failed\",\n  \"error\": $json.error,\n  \"timestamp\": $now\n}}}"
+          },
+          "id": "error_response",
+          "name": "Error Response",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [1340, 500]
+        }
+      ],
+      "connections": {
+        "webhook_trigger": {
+          "main": [
+            [
+              {
+                "node": "action_router",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "action_router": {
+          "main": [
+            [
+              {
+                "node": "create_agent_request",
+                "type": "main",
+                "index": 0
+              }
+            ],
+            [
+              {
+                "node": "deploy_router",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "deploy_router": {
+          "main": [
+            [
+              {
+                "node": "deploy_agent",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "deploy_agent": {
+          "main": [
+            [
+              {
+                "node": "deployment_success_check",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "deployment_success_check": {
+          "main": [
+            [
+              {
+                "node": "start_monitoring",
+                "type": "main",
+                "index": 0
+              }
+            ],
+            [
+              {
+                "node": "error_response",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "start_monitoring": {
+          "main": [
+            [
+              {
+                "node": "success_response",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "Agent Health Monitoring",
+      "id": "agent_health_monitoring",
+      "description": "Continuous monitoring of agent health and performance",
+      "nodes": [
+        {
+          "parameters": {
+            "rule": {
+              "interval": [
+                {
+                  "field": "minutes",
+                  "minutesInterval": 5
+                }
+              ]
+            }
+          },
+          "id": "monitoring_schedule",
+          "name": "Monitoring Schedule",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "typeVersion": 1,
+          "position": [240, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.monitoring_schedule.json.api_base_url || 'http://localhost:8000'}}/api/v1/agents/health/all",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "httpHeaderAuth",
+            "options": {}
+          },
+          "id": "get_agent_health",
+          "name": "Get Agent Health",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [460, 300]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "number": [
+                {
+                  "value1": "={{$json.health_score}}",
+                  "operation": "smaller",
+                  "value2": 0.6
+                }
+              ]
+            }
+          },
+          "id": "health_check",
+          "name": "Health Check",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [680, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.monitoring_schedule.json.n8n_base_url || 'http://localhost:5678'}}/webhook/agent-healing",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "action",
+                  "value": "trigger_healing"
+                },
+                {
+                  "name": "agent_id",
+                  "value": "={{$json.agent_id}}"
+                },
+                {
+                  "name": "health_score",
+                  "value": "={{$json.health_score}}"
+                },
+                {
+                  "name": "issues",
+                  "value": "={{$json.issues}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "trigger_healing",
+          "name": "Trigger Self-Healing",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [900, 200]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "number": [
+                {
+                  "value1": "={{$json.health_score}}",
+                  "operation": "smaller",
+                  "value2": 0.3
+                }
+              ]
+            }
+          },
+          "id": "critical_health_check",
+          "name": "Critical Health Check",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [900, 400]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.monitoring_schedule.json.api_base_url || 'http://localhost:8000'}}/api/v1/agents/lifecycle/retire",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "agent_id",
+                  "value": "={{$json.agent_id}}"
+                },
+                {
+                  "name": "reason",
+                  "value": "critical_health_failure"
+                },
+                {
+                  "name": "health_score",
+                  "value": "={{$json.health_score}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "retire_agent",
+          "name": "Retire Failed Agent",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1120, 400]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.monitoring_schedule.json.slack_webhook_url}}",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "text",
+                  "value": "🚨 Agent {{$json.agent_id}} has been retired due to critical health failure (score: {{$json.health_score}})"
+                },
+                {
+                  "name": "channel",
+                  "value": "#agent-alerts"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "alert_retirement",
+          "name": "Alert Agent Retirement",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1340, 400]
+        }
+      ],
+      "connections": {
+        "monitoring_schedule": {
+          "main": [
+            [
+              {
+                "node": "get_agent_health",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "get_agent_health": {
+          "main": [
+            [
+              {
+                "node": "health_check",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "health_check": {
+          "main": [
+            [
+              {
+                "node": "trigger_healing",
+                "type": "main",
+                "index": 0
+              },
+              {
+                "node": "critical_health_check",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "critical_health_check": {
+          "main": [
+            [
+              {
+                "node": "retire_agent",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "retire_agent": {
+          "main": [
+            [
+              {
+                "node": "alert_retirement",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "Agent Self-Healing Orchestration",
+      "id": "agent_self_healing",
+      "description": "Orchestrates self-healing processes for degraded agents",
+      "nodes": [
+        {
+          "parameters": {
+            "httpMethod": "POST",
+            "path": "agent-healing",
+            "responseMode": "responseNode",
+            "options": {}
+          },
+          "id": "healing_webhook",
+          "name": "Healing Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 1,
+          "position": [240, 300],
+          "webhookId": "agent-healing"
+        },
+        {
+          "parameters": {
+            "url": "={{$node.healing_webhook.json.api_base_url || 'http://localhost:8000'}}/api/v1/agents/{{$node.healing_webhook.json.agent_id}}/analyze-issues",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "httpHeaderAuth",
+            "options": {}
+          },
+          "id": "analyze_issues",
+          "name": "Analyze Agent Issues",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [460, 300]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "string": [
+                {
+                  "value1": "={{$json.healing_strategy}}",
+                  "operation": "equal",
+                  "value2": "restart_container"
+                }
+              ]
+            }
+          },
+          "id": "strategy_router",
+          "name": "Strategy Router",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [680, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.healing_webhook.json.api_base_url || 'http://localhost:8000'}}/api/v1/agents/{{$node.healing_webhook.json.agent_id}}/restart",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "restart_type",
+                  "value": "container"
+                },
+                {
+                  "name": "preserve_state",
+                  "value": "true"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "restart_container",
+          "name": "Restart Container",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [900, 200]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "string": [
+                {
+                  "value1": "={{$json.healing_strategy}}",
+                  "operation": "equal",
+                  "value2": "scale_resources"
+                }
+              ]
+            }
+          },
+          "id": "scale_strategy_check",
+          "name": "Scale Strategy Check",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [900, 400]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.healing_webhook.json.api_base_url || 'http://localhost:8000'}}/api/v1/agents/{{$node.healing_webhook.json.agent_id}}/scale",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "scale_type",
+                  "value": "resources"
+                },
+                {
+                  "name": "cpu_limit",
+                  "value": "={{$node.analyze_issues.json.recommended_cpu}}"
+                },
+                {
+                  "name": "memory_limit",
+                  "value": "={{$node.analyze_issues.json.recommended_memory}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "scale_resources",
+          "name": "Scale Resources",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1120, 400]
+        },
+        {
+          "parameters": {
+            "amount": 30,
+            "unit": "seconds"
+          },
+          "id": "wait_for_recovery",
+          "name": "Wait for Recovery",
+          "type": "n8n-nodes-base.wait",
+          "typeVersion": 1,
+          "position": [1340, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.healing_webhook.json.api_base_url || 'http://localhost:8000'}}/api/v1/agents/{{$node.healing_webhook.json.agent_id}}/health",
+            "options": {}
+          },
+          "id": "verify_recovery",
+          "name": "Verify Recovery",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1560, 300]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "number": [
+                {
+                  "value1": "={{$json.health_score}}",
+                  "operation": "larger",
+                  "value2": 0.7
+                }
+              ]
+            }
+          },
+          "id": "recovery_check",
+          "name": "Recovery Check",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [1780, 300]
+        },
+        {
+          "parameters": {
+            "respondWith": "json",
+            "responseBody": "={{{\n  \"success\": true,\n  \"message\": \"Agent healing completed successfully\",\n  \"agent_id\": $node.healing_webhook.json.agent_id,\n  \"new_health_score\": $node.verify_recovery.json.health_score,\n  \"timestamp\": $now\n}}}"
+          },
+          "id": "healing_success",
+          "name": "Healing Success",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [2000, 200]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.healing_webhook.json.n8n_base_url || 'http://localhost:5678'}}/webhook/agent-lifecycle",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "action",
+                  "value": "escalate_healing"
+                },
+                {
+                  "name": "agent_id",
+                  "value": "={{$node.healing_webhook.json.agent_id}}"
+                },
+                {
+                  "name": "failed_strategies",
+                  "value": "={{$node.analyze_issues.json.attempted_strategies}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "escalate_healing",
+          "name": "Escalate Healing",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [2000, 400]
+        }
+      ],
+      "connections": {
+        "healing_webhook": {
+          "main": [
+            [
+              {
+                "node": "analyze_issues",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "analyze_issues": {
+          "main": [
+            [
+              {
+                "node": "strategy_router",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "strategy_router": {
+          "main": [
+            [
+              {
+                "node": "restart_container",
+                "type": "main",
+                "index": 0
+              }
+            ],
+            [
+              {
+                "node": "scale_strategy_check",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "scale_strategy_check": {
+          "main": [
+            [
+              {
+                "node": "scale_resources",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "restart_container": {
+          "main": [
+            [
+              {
+                "node": "wait_for_recovery",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "scale_resources": {
+          "main": [
+            [
+              {
+                "node": "wait_for_recovery",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "wait_for_recovery": {
+          "main": [
+            [
+              {
+                "node": "verify_recovery",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "verify_recovery": {
+          "main": [
+            [
+              {
+                "node": "recovery_check",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "recovery_check": {
+          "main": [
+            [
+              {
+                "node": "healing_success",
+                "type": "main",
+                "index": 0
+              }
+            ],
+            [
+              {
+                "node": "escalate_healing",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "Knowledge Drift Detection and Remediation",
+      "id": "knowledge_drift_detection",
+      "description": "Monitors and remediates knowledge drift in the consciousness substrate",
+      "nodes": [
+        {
+          "parameters": {
+            "rule": {
+              "interval": [
+                {
+                  "field": "minutes",
+                  "minutesInterval": 15
+                }
+              ]
+            }
+          },
+          "id": "drift_monitoring_schedule",
+          "name": "Drift Monitoring Schedule",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "typeVersion": 1,
+          "position": [240, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.drift_monitoring_schedule.json.api_base_url || 'http://localhost:8000'}}/api/v1/knowledge/drift/check",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "httpHeaderAuth",
+            "options": {}
+          },
+          "id": "check_knowledge_drift",
+          "name": "Check Knowledge Drift",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [460, 300]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "boolean": [
+                {
+                  "value1": "={{$json.drift_detected}}",
+                  "operation": "equal",
+                  "value2": true
+                }
+              ]
+            }
+          },
+          "id": "drift_detected_check",
+          "name": "Drift Detected Check",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [680, 300]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "string": [
+                {
+                  "value1": "={{$json.severity}}",
+                  "operation": "equal",
+                  "value2": "critical"
+                }
+              ]
+            }
+          },
+          "id": "severity_check",
+          "name": "Severity Check",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [900, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.drift_monitoring_schedule.json.api_base_url || 'http://localhost:8000'}}/api/v1/knowledge/drift/remediate",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "alert_id",
+                  "value": "={{$json.alert_id}}"
+                },
+                {
+                  "name": "remediation_strategy",
+                  "value": "immediate"
+                },
+                {
+                  "name": "preserve_history",
+                  "value": "true"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "immediate_remediation",
+          "name": "Immediate Remediation",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1120, 200]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.drift_monitoring_schedule.json.api_base_url || 'http://localhost:8000'}}/api/v1/knowledge/drift/queue-remediation",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "alert_id",
+                  "value": "={{$json.alert_id}}"
+                },
+                {
+                  "name": "remediation_strategy",
+                  "value": "scheduled"
+                },
+                {
+                  "name": "priority",
+                  "value": "={{$json.severity}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "queue_remediation",
+          "name": "Queue Remediation",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1120, 400]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.drift_monitoring_schedule.json.slack_webhook_url}}",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "text",
+                  "value": "⚠️ Critical knowledge drift detected: {{$json.description}} (Alert ID: {{$json.alert_id}})"
+                },
+                {
+                  "name": "channel",
+                  "value": "#knowledge-alerts"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "alert_critical_drift",
+          "name": "Alert Critical Drift",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1340, 200]
+        },
+        {
+          "parameters": {
+            "url": "={{$node.drift_monitoring_schedule.json.api_base_url || 'http://localhost:8000'}}/api/v1/knowledge/drift/validate-remediation",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "alert_id",
+                  "value": "={{$json.alert_id}}"
+                },
+                {
+                  "name": "remediation_id",
+                  "value": "={{$node.immediate_remediation.json.remediation_id}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "validate_remediation",
+          "name": "Validate Remediation",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1560, 200]
+        }
+      ],
+      "connections": {
+        "drift_monitoring_schedule": {
+          "main": [
+            [
+              {
+                "node": "check_knowledge_drift",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "check_knowledge_drift": {
+          "main": [
+            [
+              {
+                "node": "drift_detected_check",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "drift_detected_check": {
+          "main": [
+            [
+              {
+                "node": "severity_check",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "severity_check": {
+          "main": [
+            [
+              {
+                "node": "immediate_remediation",
+                "type": "main",
+                "index": 0
+              }
+            ],
+            [
+              {
+                "node": "queue_remediation",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "immediate_remediation": {
+          "main": [
+            [
+              {
+                "node": "alert_critical_drift",
+                "type": "main",
+                "index": 0
+              },
+              {
+                "node": "validate_remediation",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    }
+  ],
+  "credentials": [
+    {
+      "name": "Agent API Authentication",
+      "type": "httpHeaderAuth",
+      "data": {
+        "name": "Authorization",
+        "value": "Bearer {{ENV_AGENT_API_TOKEN}}"
+      }
+    }
+  ],
+  "variables": [
+    {
+      "key": "API_BASE_URL",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "N8N_BASE_URL",
+      "value": "http://localhost:5678"
+    },
+    {
+      "key": "SLACK_WEBHOOK_URL",
+      "value": "{{ENV_SLACK_WEBHOOK_URL}}"
+    }
+  ]
+}
+

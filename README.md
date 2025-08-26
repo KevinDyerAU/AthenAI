@@ -49,6 +49,20 @@ Key variables:
   - `AUDIT_LOG_PATH=./audit.log`
   - `TOOLS_REGISTRY_PATH=./workflows/templates/model_selector.js`
 
+### Autonomy-specific variables
+
+Add these to `.env` (see `.env.example` / `unified.env.example` for defaults):
+
+- `AUTONOMY_ENABLED=true` — Enable agent lifecycle/drift monitors and endpoints
+- `AUTONOMY_API_EXPOSE=true` — Expose `/api/autonomy/*` endpoints (if feature-gated in your deployment)
+- `AUTONOMY_DEFAULT_MONITOR_INTERVAL=30` — Seconds between health/drift scans
+- `AUTONOMY_SAFETY_MODE=conservative` — conservative|balanced|aggressive
+- `DRIFT_SCAN_INTERVAL=300` — Drift detector scan period (seconds)
+- `HEALING_POLICY=restart_then_roll_back` — Self-healing strategy
+
+RabbitMQ connection (used by publishers/consumers):
+- `RABBITMQ_URL=amqp://user:pass@host:5672/`
+
 ## Install dependencies
 
 ```bash
@@ -119,6 +133,33 @@ Health check: `GET /system/health` → `{ "status": "ok" }`
 
 Key namespaces exposed in `api/app.py`:
 - `auth`, `agents`, `workflows`, `system`, `config`, `tools`, `knowledge`, `conversations`, `kg_admin`, `kg_consensus`, `integrations`, `substrate`.
+
+### Autonomous agent management
+
+New namespace: `autonomy` (registered under `/api/autonomy`). Endpoints:
+
+- `POST /api/autonomy/agents/{agent_id}/lifecycle`
+  - Body:
+    ```json
+    { "state": "started", "reason": "manual", "metadata": {"source":"test"} }
+    ```
+  - Persists `Agent` and `LifecycleEvent` in Neo4j and publishes to RabbitMQ exchange `agents.lifecycle` with routing key `lifecycle.<state>`.
+
+- `POST /api/autonomy/agents/{agent_id}/metrics`
+  - Body:
+    ```json
+    { "cpu": 0.25, "mem": 512, "latency_ms": 120.5, "success_rate": 0.99, "throughput": 12 }
+    ```
+  - Persists `AgentMetrics` in Neo4j and publishes to exchange `agents.health` with routing key `health.metrics`.
+
+- `POST /api/autonomy/agents/{agent_id}/drift`
+  - Body:
+    ```json
+    { "signal": "embedding_shift", "severity": "medium", "details": {"window":"24h"} }
+    ```
+  - Persists `KnowledgeDriftAlert` in Neo4j and publishes to exchange `agents.drift` with routing key `drift.<signal>`.
+
+Auth: These endpoints inherit the API's default security config. If JWT is enabled globally, include `Authorization: Bearer <token>`.
 
 ## Consciousness Substrate (Neo4j) — Usage
 
@@ -226,6 +267,24 @@ Example payload:
 See example publishers:
 - Python: `examples/integrations/python/rabbitmq_publish_agent_update.py`
 - Node: `examples/integrations/node/rabbitmq_publish_agent_update.js`
+
+### RabbitMQ exchanges/queues for autonomy
+
+Exchanges (topic):
+- `agents.lifecycle`
+- `agents.health`
+- `agents.drift`
+- `dead-letter.exchange` (DLQ target)
+
+Queues (durable) with bindings:
+- `agents.lifecycle.events` ← `agents.lifecycle` with `lifecycle.*`
+- `agents.health.metrics` ← `agents.health` with `health.*`
+- `agents.drift.alerts` ← `agents.drift` with `drift.*`
+- Dead letter queues: `agents.lifecycle.dlq`, `agents.health.dlq`, `agents.drift.dlq`
+
+Policies configure DLX routing; see `infrastructure/rabbitmq/definitions.json`.
+
+Publisher helper available in API: `api/utils/rabbitmq.py` → `publish_exchange(exchange, routing_key, message)`.
 
 ## n8n webhooks
 

@@ -1,0 +1,331 @@
+{
+  "exportVersion": 1,
+  "workflows": [
+    {
+      "name": "Agent Lifecycle Orchestration",
+      "id": "agent_lifecycle_orchestration",
+      "nodes": [
+        {
+          "parameters": {
+            "httpMethod": "POST",
+            "path": "agent-lifecycle",
+            "responseMode": "responseNode",
+            "options": {}
+          },
+          "id": "webhook_trigger",
+          "name": "Lifecycle Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 1,
+          "position": [240, 300],
+          "webhookId": "agent-lifecycle"
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "string": [
+                { "value1": "={{$json.action}}", "operation": "equal", "value2": "create_agent" }
+              ]
+            }
+          },
+          "id": "action_router",
+          "name": "Action Router",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [460, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/lifecycle/requests",
+            "authentication": "none",
+            "sendHeaders": true,
+            "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+            "sendBody": true,
+            "jsonParameters": true,
+            "options": {}
+          },
+          "id": "create_agent_request",
+          "name": "Create Agent Request",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [700, 220]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "string": [
+                { "value1": "={{$json.action}}", "operation": "equal", "value2": "start_manager" }
+              ]
+            }
+          },
+          "id": "start_router",
+          "name": "Start Router",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [460, 420]
+        },
+        {
+          "parameters": {
+            "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/lifecycle/manager/start",
+            "authentication": "none"
+          },
+          "id": "start_manager",
+          "name": "Start Manager",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [700, 420]
+        },
+        {
+          "parameters": { "respondWith": "json", "responseBody": "={{{\n  'ok': true,\n  'message': 'Lifecycle action accepted',\n  'timestamp': $now\n}}}" },
+          "id": "respond",
+          "name": "Respond",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [980, 320]
+        }
+      ],
+      "connections": {
+        "webhook_trigger": { "main": [ [ { "node": "action_router", "type": "main", "index": 0 } ] ] },
+        "action_router": {
+          "main": [
+            [ { "node": "create_agent_request", "type": "main", "index": 0 } ],
+            [ { "node": "start_router", "type": "main", "index": 0 } ]
+          ]
+        },
+        "create_agent_request": { "main": [ [ { "node": "respond", "type": "main", "index": 0 } ] ] },
+        "start_router": { "main": [ [ { "node": "start_manager", "type": "main", "index": 0 } ] ] },
+        "start_manager": { "main": [ [ { "node": "respond", "type": "main", "index": 0 } ] ] }
+      }
+    },
+    {
+      "name": "Agent Health Monitoring",
+      "id": "agent_health_monitoring",
+      "nodes": [
+        {
+          "parameters": { "rule": { "interval": [ { "field": "minutes", "minutesInterval": 5 } ] } },
+          "id": "schedule",
+          "name": "Schedule",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "typeVersion": 1,
+          "position": [240, 300]
+        },
+        {
+          "parameters": { "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/lifecycle/manager/status" },
+          "id": "get_status",
+          "name": "Get Manager Status",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [480, 300]
+        },
+        {
+          "parameters": {
+            "functionCode": "return items.map(i => ({ json: (i.json.deployed_agents || []).map(x => x) })).flat();"
+          },
+          "id": "split_agents",
+          "name": "Split Agents",
+          "type": "n8n-nodes-base.function",
+          "typeVersion": 1,
+          "position": [720, 300]
+        },
+        {
+          "parameters": {
+            "conditions": { "number": [ { "value1": "={{$json.health_score || 1}}", "operation": "smaller", "value2": 0.6 } ] }
+          },
+          "id": "unhealthy_check",
+          "name": "Unhealthy?",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [960, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$json.slack_webhook_url || ''}}",
+            "sendHeaders": true,
+            "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+            "sendBody": true,
+            "jsonParameters": true,
+            "options": {}
+          },
+          "id": "notify_slack",
+          "name": "Notify Slack",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1200, 220]
+        },
+        {
+          "parameters": { "conditions": { "number": [ { "value1": "={{$json.health_score || 1}}", "operation": "smaller", "value2": 0.3 } ] } },
+          "id": "critical_check",
+          "name": "Critical?",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [1200, 380]
+        },
+        {
+          "parameters": {
+            "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/lifecycle/retire",
+            "sendHeaders": true,
+            "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+            "sendBody": true,
+            "jsonParameters": true
+          },
+          "id": "retire_agent",
+          "name": "Retire Agent",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1440, 380]
+        }
+      ],
+      "connections": {
+        "schedule": { "main": [ [ { "node": "get_status", "type": "main", "index": 0 } ] ] },
+        "get_status": { "main": [ [ { "node": "split_agents", "type": "main", "index": 0 } ] ] },
+        "split_agents": { "main": [ [ { "node": "unhealthy_check", "type": "main", "index": 0 } ] ] },
+        "unhealthy_check": {
+          "main": [
+            [ { "node": "notify_slack", "type": "main", "index": 0 } ],
+            [ { "node": "critical_check", "type": "main", "index": 0 } ]
+          ]
+        },
+        "critical_check": { "main": [ [ { "node": "retire_agent", "type": "main", "index": 0 } ] ] }
+      }
+    },
+    {
+      "name": "Knowledge Drift Orchestration",
+      "id": "knowledge_drift_orchestration",
+      "nodes": [
+        {
+          "parameters": { "rule": { "interval": [ { "field": "minutes", "minutesInterval": 15 } ] } },
+          "id": "schedule",
+          "name": "Schedule",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "typeVersion": 1,
+          "position": [240, 300]
+        },
+        {
+          "parameters": { "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/metrics/drift/check" },
+          "id": "check_drift",
+          "name": "Check Drift",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [480, 300]
+        },
+        {
+          "parameters": { "conditions": { "boolean": [ { "value1": "={{$json.drift_detected}}", "operation": "equal", "value2": true } ] } },
+          "id": "drift_check",
+          "name": "Drift?",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [720, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/metrics/drift/remediate",
+            "sendHeaders": true,
+            "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+            "sendBody": true,
+            "jsonParameters": true
+          },
+          "id": "remediate",
+          "name": "Remediate",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [960, 220]
+        },
+        {
+          "parameters": {
+            "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/metrics/drift/queue-remediation",
+            "sendHeaders": true,
+            "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+            "sendBody": true,
+            "jsonParameters": true
+          },
+          "id": "queue",
+          "name": "Queue Remediation",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [960, 380]
+        }
+      ],
+      "connections": {
+        "schedule": { "main": [ [ { "node": "check_drift", "type": "main", "index": 0 } ] ] },
+        "check_drift": {
+          "main": [
+            [ { "node": "remediate", "type": "main", "index": 0 } ],
+            [ { "node": "queue", "type": "main", "index": 0 } ]
+          ]
+        }
+      }
+    },
+    {
+      "name": "Self-Healing Orchestration",
+      "id": "self_healing_orchestration",
+      "nodes": [
+        {
+          "parameters": { "httpMethod": "POST", "path": "agent-healing", "responseMode": "responseNode" },
+          "id": "healing_webhook",
+          "name": "Healing Webhook",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 1,
+          "position": [240, 300]
+        },
+        {
+          "parameters": { "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/lifecycle/manager/status" },
+          "id": "status",
+          "name": "Manager Status",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [480, 300]
+        },
+        {
+          "parameters": { "conditions": { "string": [ { "value1": "={{$json.strategy}}", "operation": "equal", "value2": "retire" } ] } },
+          "id": "strategy_router",
+          "name": "Strategy Router",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [720, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/lifecycle/retire",
+            "sendHeaders": true,
+            "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+            "sendBody": true,
+            "jsonParameters": true
+          },
+          "id": "retire",
+          "name": "Retire Agent",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [960, 180]
+        },
+        {
+          "parameters": { "respondWith": "json", "responseBody": "={{{ 'ok': true, 'message': 'Healing orchestrated', 'timestamp': $now }}}" },
+          "id": "respond",
+          "name": "Respond",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [1200, 300]
+        }
+      ],
+      "connections": {
+        "healing_webhook": { "main": [ [ { "node": "status", "type": "main", "index": 0 } ] ] },
+        "status": { "main": [ [ { "node": "strategy_router", "type": "main", "index": 0 } ] ] },
+        "strategy_router": { "main": [ [ { "node": "retire", "type": "main", "index": 0 } ], [ { "node": "respond", "type": "main", "index": 0 } ] ] },
+        "retire": { "main": [ [ { "node": "respond", "type": "main", "index": 0 } ] ] }
+      }
+    },
+    {
+      "name": "Human-in-the-Loop Approvals",
+      "id": "human_in_the_loop",
+      "nodes": [
+        { "parameters": { "httpMethod": "POST", "path": "approval", "responseMode": "responseNode" }, "id": "webhook", "name": "Approval Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 1, "position": [240, 300] },
+        { "parameters": { "conditions": { "string": [ { "value1": "={{$json.approve}}", "operation": "equal", "value2": "yes" } ] } }, "id": "approve_check", "name": "Approve?", "type": "n8n-nodes-base.if", "typeVersion": 1, "position": [480, 300] },
+        { "parameters": { "url": "={{$json.api_base_url || 'http://localhost:8000'}}/api/autonomy/lifecycle/manager/start" }, "id": "start_on_approve", "name": "Start on Approve", "type": "n8n-nodes-base.httpRequest", "typeVersion": 3, "position": [720, 220] },
+        { "parameters": { "respondWith": "json", "responseBody": "={{{ 'ok': true, 'decision': $json.approve, 'timestamp': $now }}}" }, "id": "respond", "name": "Respond", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [980, 300] }
+      ],
+      "connections": {
+        "webhook": { "main": [ [ { "node": "approve_check", "type": "main", "index": 0 } ] ] },
+        "approve_check": { "main": [ [ { "node": "start_on_approve", "type": "main", "index": 0 } ], [ { "node": "respond", "type": "main", "index": 0 } ] ] },
+        "start_on_approve": { "main": [ [ { "node": "respond", "type": "main", "index": 0 } ] ] }
+      }
+    }
+  ]
+}

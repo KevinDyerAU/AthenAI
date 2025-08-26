@@ -1,0 +1,41 @@
+# Dev overrides: live code mounts and extra ports for debugging
+services:
+  api-service:
+    volumes:
+      - ./api:/app:rw
+    environment:
+      FLASK_ENV: development
+      DEBUG_MODE: "true"
+    ports:
+      - "8000:5000"
+
+  n8n:
+    ports:
+      - "5678:5678"
+
+  grafana:
+    ports:
+      - "3000:3000"
+
+  rabbitmq:
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+
+  neo4j:
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+
+  agent-lifecycle-manager:
+    environment:
+      AUTONOMY_SAFETY_MODE: guarded
+      AUTONOMY_DEFAULT_MONITOR_INTERVAL: 30
+
+  knowledge-drift-detector:
+    environment:
+      DRIFT_SCAN_INTERVAL: 120
+
+  self-healing-monitor:
+    environment:
+      HEALING_POLICY: conservative

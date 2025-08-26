@@ -15,12 +15,16 @@ from .resources.kg_admin import ns as kg_admin_ns
 from .resources.kg_consensus import ns as kg_consensus_ns
 from .resources.integrations import ns as integrations_ns
 from .resources.substrate import ns as substrate_ns
+from .resources.autonomy import ns as autonomy_ns
+from .resources.kg_drift import ns as kg_drift_ns
+from .resources.self_healing import ns as self_healing_ns
 from .ws.events import register_socketio_events
 from .errors import register_error_handlers
 from .security.jwt_callbacks import register_jwt_callbacks
 from .metrics import init_metrics
 from .db_metrics import init_sqlalchemy_metrics
 import logging
+from .services.autonomy.agent_lifecycle_manager import AgentLifecycleManager
 
 
 def create_app() -> Flask:
@@ -49,6 +53,7 @@ def create_app() -> Flask:
                 "auth": "/auth",
                 "agents": "/agents",
                 "workflows": "/workflows",
+                "autonomy": "/api/autonomy"
             }
         })
     # Note: Do not register an empty path ('') — Flask requires leading '/'
@@ -72,6 +77,9 @@ def create_app() -> Flask:
     restx_api.add_namespace(kg_consensus_ns)
     restx_api.add_namespace(integrations_ns)
     restx_api.add_namespace(substrate_ns)
+    restx_api.add_namespace(autonomy_ns)
+    restx_api.add_namespace(kg_drift_ns)
+    restx_api.add_namespace(self_healing_ns)
 
     # Socket.IO
     register_socketio_events(socketio)
@@ -86,6 +94,12 @@ def create_app() -> Flask:
         init_sqlalchemy_metrics(db)
         if app.config.get("DB_AUTO_CREATE", False):
             db.create_all()
+
+        # Initialize Lifecycle Manager singleton and optionally autostart
+        lm = AgentLifecycleManager()
+        app.extensions["lifecycle_manager"] = lm
+        if os.getenv("LIFECYCLE_MANAGER_AUTOSTART", "false").lower() == "true":
+            lm.start()
 
     return app
 
