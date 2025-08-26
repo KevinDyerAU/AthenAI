@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>NeoV3 API Reference</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { margin: 0; padding: 0; }
+      .topbar { position: fixed; top:0; left:0; right:0; height:48px; background:#0f172a; color:#fff; display:flex; align-items:center; padding:0 16px; z-index:10; }
+      .topbar a { color:#93c5fd; text-decoration:none; margin-left: 12px; }
+      .content { position: absolute; top:48px; bottom:0; left:0; right:0; }
+    </style>
+    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+  </head>
+  <body>
+    <div class="topbar">
+      <strong>NeoV3 API Reference</strong>
+      <a href="../developer-guides/DEVELOPER_INTEGRATION_GUIDE.md" style="margin-left:auto">Developer Guide</a>
+    </div>
+    <div class="content">
+      <redoc spec-url="./openapi.json"></redoc>
+    </div>
+  </body>
+</html>
