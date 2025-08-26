@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeoV3 Self-Healing Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-Mo1m0sO4mYfJq3kFZ2fQm1y8k9rXzYk8g+GQ0oGdQ0w+K5O6+2U3r6+FQm7o0h8B" crossorigin="anonymous"></script>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b1020; color:#e6e8f2; margin:0; }
+    header { padding:16px 24px; background:#121834; border-bottom:1px solid #1f2a5a; display:flex; gap:16px; align-items:center; }
+    main { padding:24px; display:grid; grid-template-columns: 2fr 1fr; gap:24px; }
+    .card { background:#0f1530; border:1px solid #1f2a5a; border-radius:12px; padding:16px; }
+    h1 { font-size:18px; margin:0; font-weight:600; }
+    label { font-size:12px; color:#a9b1d6; }
+    input, select, button { background:#0b1020; color:#e6e8f2; border:1px solid #1f2a5a; border-radius:8px; padding:8px 10px; }
+    button.primary { background:#2d5cff; border-color:#2d5cff; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .events { max-height:360px; overflow:auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px; }
+    .pill { padding:2px 8px; font-size:11px; border-radius:9999px; border:1px solid #2d5cff33; background:#2d5cff22; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Self-Healing Dashboard</h1>
+    <div class="row">
+      <label>API Base</label>
+      <input id="baseUrl" placeholder="http://localhost:8000/api" style="width:260px" />
+      <label>JWT</label>
+      <input id="jwt" placeholder="Bearer ey..." style="width:340px" />
+    </div>
+  </header>
+  <main>
+    <section class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="row">
+          <label>Metric</label>
+          <select id="metric">
+            <option value="error_rate">error_rate</option>
+            <option value="cpu_load">cpu_load</option>
+            <option value="latency_p95">latency_p95</option>
+            <option value="queue_depth">queue_depth</option>
+            <option value="memory_usage">memory_usage</option>
+          </select>
+          <label>Limit</label>
+          <input id="limit" type="number" value="100" style="width:90px" />
+          <label>Forecast steps</label>
+          <input id="steps" type="number" value="3" style="width:90px" />
+        </div>
+        <div class="row">
+          <button id="load" class="primary">Load Trend + Forecast</button>
+        </div>
+      </div>
+      <canvas id="trendChart" height="120"></canvas>
+      <div style="margin-top:12px;">
+        <span class="pill">Forecast: <span id="forecastVal">-</span></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3 style="margin-top:0">Live Events</h3>
+      <div class="events" id="events"></div>
+    </section>
+  </main>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    let chart;
+
+    function headers() {
+      const jwt = el('jwt').value || '';
+      return { 'Authorization': jwt.trim(), 'Content-Type': 'application/json' };
+    }
+
+    async function fetchJSON(url) {
+      const res = await fetch(url, { headers: headers() });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    function drawTrend(labels, values) {
+      const ctx = el('trendChart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Metric',
+            data: values,
+            tension: 0.3,
+            borderColor: '#2d5cff',
+            fill: false,
+          }]
+        },
+        options: {
+          plugins: { legend: { labels: { color: '#e6e8f2' } } },
+          scales: {
+            x: { ticks: { color: '#a9b1d6' }, grid: { color: '#1f2a5a' } },
+            y: { ticks: { color: '#a9b1d6' }, grid: { color: '#1f2a5a' } },
+          }
+        }
+      });
+    }
+
+    async function loadTrendAndForecast() {
+      const base = (el('baseUrl').value || '').replace(/\/$/, '');
+      const metric = el('metric').value;
+      const limit = parseInt(el('limit').value || '100', 10);
+      const steps = parseInt(el('steps').value || '1', 10);
+      if (!base) { alert('Set API Base'); return; }
+      try {
+        const trend = await fetchJSON(`${base}/self_healing/metrics/trend?metric=${encodeURIComponent(metric)}&limit=${limit}`);
+        const ts = trend.trend || [];
+        const labels = ts.map(([t]) => new Date(t).toLocaleTimeString());
+        const values = ts.map(([,v]) => v);
+        drawTrend(labels, values);
+
+        const fc = await fetchJSON(`${base}/self_healing/metrics/forecast?metric=${encodeURIComponent(metric)}&steps=${steps}`);
+        el('forecastVal').textContent = String(fc.forecast);
+      } catch (e) {
+        console.error(e);
+        alert('Failed to load');
+      }
+    }
+
+    function addEvent(evt, payload) {
+      const c = el('events');
+      const pre = document.createElement('pre');
+      pre.textContent = `[${new Date().toLocaleTimeString()}] ${evt}: ${JSON.stringify(payload)}`;
+      c.prepend(pre);
+    }
+
+    function connectSocket() {
+      try {
+        const origin = window.location.origin;
+        const socket = io(origin, { path: '/socket.io' });
+        ['self_healing:analyze','self_healing:heal'].forEach(evt => {
+          socket.on(evt, (payload) => addEvent(evt, payload));
+        });
+      } catch (e) {
+        console.warn('Socket connect failed', e);
+      }
+    }
+
+    el('load').addEventListener('click', loadTrendAndForecast);
+    connectSocket();
+  </script>
+</body>
+</html>

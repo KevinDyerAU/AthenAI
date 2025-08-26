@@ -1,6 +1,9 @@
 import json
 import os
 from typing import Any, Dict, Callable, Optional
+import base64
+import hmac
+import hashlib
 
 try:
     import pika  # type: ignore
@@ -67,6 +70,85 @@ def publish_exchange(exchange: str, routing_key: str, message: Dict[str, Any]) -
             body=body,
             properties=pika.BasicProperties(content_type="application/json", delivery_mode=2),
         )
+        connection.close()
+        return True
+    except Exception:
+        return False
+
+
+def publish_exchange_profiled(exchange: str, routing_key: str, message: Dict[str, Any], profile: str = "default") -> bool:
+    """Publish with QoS/security profile.
+    Profiles configured via env:
+      COORD_MSG_SIGN_KEY: HMAC-SHA256 signing key (optional)
+      COORD_MSG_PRIORITY_<PROFILE>: integer 0-9
+    """
+    if pika is None:
+        return False
+    params = _get_connection_params()
+    if params is None:
+        return False
+    try:
+        connection = pika.BlockingConnection(params)
+        channel = connection.channel()
+        channel.exchange_declare(exchange=exchange, exchange_type="topic", durable=True)
+        body = json.dumps(message).encode("utf-8")
+        # Optional signing
+        headers = {}
+        sign_key = os.getenv("COORD_MSG_SIGN_KEY")
+        if sign_key:
+            sig = hmac.new(sign_key.encode("utf-8"), body, hashlib.sha256).digest()
+            headers["sig"] = base64.b64encode(sig).decode("ascii")
+            headers["sig_alg"] = "HMAC-SHA256"
+        # Optional priority
+        try:
+            prio = int(os.getenv(f"COORD_MSG_PRIORITY_{profile.upper()}", "0"))
+        except Exception:
+            prio = 0
+        props = pika.BasicProperties(
+            content_type="application/json",
+            delivery_mode=2,
+            headers=headers or None,
+            priority=prio if prio else None,
+        )
+        channel.basic_publish(exchange=exchange, routing_key=routing_key, body=body, properties=props)
+        connection.close()
+        return True
+    except Exception:
+        return False
+
+
+def ensure_coordination_bindings() -> bool:
+    """Declare coordination exchange, queues, and bindings with priorities and DLQs.
+    Queues:
+      coord.events (bindings: agent.register, agent.heartbeat, task.allocated, rebalance.plan, conflict.resolved, consensus.decision, knowledge.shared)
+      coord.msg (bindings: msg.#)
+    """
+    if pika is None:
+        return False
+    params = _get_connection_params()
+    if params is None:
+        return False
+    try:
+        connection = pika.BlockingConnection(params)
+        channel = connection.channel()
+        # Exchanges
+        channel.exchange_declare(exchange="coordination", exchange_type="topic", durable=True)
+        channel.exchange_declare(exchange="coordination.dlx", exchange_type="topic", durable=True)
+        # Queues with DLQ and priority support
+        args_common = {
+            "x-dead-letter-exchange": "coordination.dlx",
+            "x-max-priority": 10,
+        }
+        channel.queue_declare(queue="coord.events", durable=True, arguments=args_common)
+        channel.queue_declare(queue="coord.msg", durable=True, arguments=args_common)
+        # Bindings
+        keys = [
+            "agent.register", "agent.heartbeat", "task.allocated", "rebalance.plan",
+            "conflict.resolved", "consensus.decision", "knowledge.shared",
+        ]
+        for k in keys:
+            channel.queue_bind(queue="coord.events", exchange="coordination", routing_key=k)
+        channel.queue_bind(queue="coord.msg", exchange="coordination", routing_key="msg.#")
         connection.close()
         return True
     except Exception:

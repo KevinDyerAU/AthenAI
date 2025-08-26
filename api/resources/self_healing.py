@@ -4,6 +4,7 @@ from flask_restx import Namespace, Resource, fields
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from ..services.self_healing import SelfHealingService
+import requests
 from ..utils.audit import audit_event
 from ..utils.rabbitmq import publish_exchange
 from ..extensions import socketio
@@ -55,6 +56,25 @@ class SHHeal(Resource):
         dry_run = bool(payload.get("dry_run", True))
         user = get_jwt_identity()
         context["user"] = user
+        # Optional verify_http: {url, method, timeout, expect_status}
+        vhttp = payload.get("verify_http") or {}
+        if vhttp and isinstance(vhttp, dict) and vhttp.get("url"):
+            url = vhttp.get("url")
+            method = (vhttp.get("method") or "GET").upper()
+            timeout = int(vhttp.get("timeout", 5))
+            expect = int(vhttp.get("expect_status", 200))
+
+            def _verifier():
+                try:
+                    if method == "POST":
+                        r = requests.post(url, timeout=timeout)
+                    else:
+                        r = requests.get(url, timeout=timeout)
+                    return int(r.status_code) == expect
+                except Exception:
+                    return False
+
+            context["verify"] = _verifier
         result = svc.heal(issue, context, dry_run=dry_run, strategy=strategy)
         audit_event("self_healing.api.heal", {"strategy": result.get("strategy")}, user)
         try:
@@ -76,3 +96,27 @@ class SHLearning(Resource):
     @jwt_required()
     def get(self):
         return svc.learning_stats()
+
+
+@ns.route("/metrics/trend")
+class SHMetricTrend(Resource):
+    @jwt_required()
+    def get(self):
+        metric = request.args.get("metric")
+        if not metric:
+            return {"error": "metric required"}, 400
+        limit = int(request.args.get("limit", 100))
+        data = svc.get_metric_trend(metric, limit=limit)
+        return {"metric": metric, "trend": data}
+
+
+@ns.route("/metrics/forecast")
+class SHMetricForecast(Resource):
+    @jwt_required()
+    def get(self):
+        metric = request.args.get("metric")
+        if not metric:
+            return {"error": "metric required"}, 400
+        steps = int(request.args.get("steps", 1))
+        value = svc.forecast(metric, steps=steps)
+        return {"metric": metric, "steps": steps, "forecast": value}

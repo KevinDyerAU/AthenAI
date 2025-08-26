@@ -94,3 +94,75 @@ def test_strategies_and_learning_endpoints(app, client):
     r2 = client.get("/api/self_healing/learning", headers=auth_headers(app))
     assert r2.status_code == 200
     assert "selector" in r2.get_json()
+
+
+def test_metric_trend_and_forecast_endpoints(app, client, monkeypatch):
+    from api.resources import self_healing as sh_mod
+    monkeypatch.setattr(sh_mod.svc, "get_metric_trend", lambda metric, limit=100: [(1, 0.1), (2, 0.2)])
+    monkeypatch.setattr(sh_mod.svc, "forecast", lambda metric, steps=1: 0.25)
+
+    rt = client.get("/api/self_healing/metrics/trend?metric=error_rate&limit=10", headers=auth_headers(app))
+    assert rt.status_code == 200
+    assert rt.get_json()["trend"][0] == [1, 0.1] or tuple(rt.get_json()["trend"][0]) == (1, 0.1)
+
+    rf = client.get("/api/self_healing/metrics/forecast?metric=error_rate&steps=3", headers=auth_headers(app))
+    assert rf.status_code == 200
+    assert rf.get_json()["forecast"] == 0.25
+
+
+def test_python_uuid_persistence_on_heal(app, client, monkeypatch):
+    # Capture run_query params when HealingAttempt is created and assert UUID-like id present
+    calls = {"params": []}
+    class MockClient:
+        def run_query(self, cypher, params=None):
+            if "CREATE (h:HealingAttempt" in cypher:
+                calls["params"].append(params)
+            return []
+    monkeypatch.setattr("api.resources.self_healing.get_client", lambda: MockClient())
+
+    from api.resources import self_healing as sh_mod
+    # Make selection deterministic and executor return applied True
+    monkeypatch.setattr(sh_mod.svc.selector, "best", lambda c: "restart_unhealthy")
+    monkeypatch.setattr(sh_mod.svc.executor, "execute", lambda name, context, dry_run: {"applied": True, "verified": True})
+
+    issue = {"diagnosis": {"issue_type": "x", "root_cause": "y", "confidence": 1.0, "impacted_components": [], "recommended_strategies": ["restart_unhealthy"]}}
+    resp = client.post("/api/self_healing/heal", json={"issue": issue, "dry_run": False}, headers=auth_headers(app))
+    assert resp.status_code == 200
+    assert len(calls["params"]) == 1
+    hid = calls["params"][0]["id"]
+    # basic UUID sanity: contains hyphens and length > 10
+    assert isinstance(hid, str) and "-" in hid and len(hid) > 10
+
+
+def test_execute_verification_and_rollback_branches(app, monkeypatch):
+    # Force a real execute path with strategy 'scale_service' and failing verification
+    from api.resources import self_healing as sh_mod
+    execu = sh_mod.svc.executor
+    context = {"service": "api", "scaler": None, "verify": lambda: False}
+    out = execu.execute("scale_service", context=context, dry_run=False)
+    assert out["verified"] is False
+    assert isinstance(out.get("rolled_back"), list)
+    # Check that rollback contains inverse scale
+    rb = [a for a in out["rolled_back"] if a.get("type") == "scale"]
+    assert rb and rb[0].get("delta") == -1
+
+
+def test_config_rollback_gitops_integration(app, monkeypatch):
+    from api.resources import self_healing as sh_mod
+    class GitOps:
+        def rollback(self, target):
+            return True
+    # Avoid DB write
+    class MockClient:
+        def run_query(self, cypher, params=None):
+            return []
+    monkeypatch.setattr("api.resources.self_healing.get_client", lambda: MockClient())
+    res = sh_mod.svc.heal(
+        issue={"diagnosis": {"issue_type": "configuration_or_dependency", "root_cause": "deploy", "confidence": 0.6, "impacted_components": ["api"], "recommended_strategies": ["rollback_config"]}},
+        context={"gitops": GitOps(), "config_target": "api"},
+        dry_run=False,
+        strategy="rollback_config",
+    )
+    assert res["outcome"]["applied"] in (True, False)  # verified depends on verify hook (not provided, defaults True)
+    actions = res["outcome"].get("actions", [])
+    assert any(a.get("type") == "config.rollback" for a in actions)

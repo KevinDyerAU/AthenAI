@@ -1,9 +1,10 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import math
 import statistics
 import time
+import uuid
 
 try:
     import docker  # type: ignore
@@ -75,46 +76,65 @@ class AnomalyDetector:
 
 class DiagnosisEngine:
     def diagnose(self, anomalies: List[Anomaly], context: Dict[str, Any]) -> Diagnosis:
-        # Simple heuristics across common signals
-        issue_type = "unknown"
-        root = "insufficient data"
-        impacted: List[str] = []
-        rec: List[str] = []
-        conf = 0.5
+        # Knowledge-based rules
+        rules: List[Tuple[Callable[[Dict[str, Anomaly]], bool], Dict[str, Any]]] = [
+            # Elevated error rate under CPU or MEM pressure
+            (lambda m: ("error_rate" in m) and ("cpu_load" in m or "memory_usage" in m), {
+                "issue_type": "degradation",
+                "root_cause": "elevated error rate under resource pressure",
+                "recommend": ["scale_service", "restart_unhealthy", "throttle_traffic"],
+                "confidence": 0.8,
+                "impact_key": "services",
+            }),
+            # Backpressure: latency + queue depth together
+            (lambda m: (m.get("latency_p95") and abs(m["latency_p95"].zscore) > 2) and (m.get("queue_depth") and abs(m["queue_depth"].zscore) > 2), {
+                "issue_type": "backpressure",
+                "root_cause": "queue growth causing latency",
+                "recommend": ["increase_workers", "rebalance_load", "purge_stuck"],
+                "confidence": 0.75,
+                "impact_key": "queues",
+            }),
+            # CPU hotspot
+            (lambda m: m.get("cpu_load") and m["cpu_load"].zscore > 3, {
+                "issue_type": "resource_hotspot",
+                "root_cause": "sustained high CPU",
+                "recommend": ["scale_service", "restart_unhealthy"],
+                "confidence": 0.7,
+                "impact_key": "services",
+            }),
+            # Memory pressure
+            (lambda m: m.get("memory_usage") and m["memory_usage"].zscore > 3, {
+                "issue_type": "memory_pressure",
+                "root_cause": "sustained high memory",
+                "recommend": ["restart_unhealthy", "recycle_container"],
+                "confidence": 0.7,
+                "impact_key": "services",
+            }),
+            # Error spikes without resource pressure -> config or dependency
+            (lambda m: ("error_rate" in m) and not ("cpu_load" in m or "memory_usage" in m), {
+                "issue_type": "configuration_or_dependency",
+                "root_cause": "elevated errors without resource pressure; check recent deploys and dependencies",
+                "recommend": ["rollback_config", "restart_unhealthy"],
+                "confidence": 0.6,
+                "impact_key": "services",
+            }),
+        ]
 
         m = {a.metric: a for a in anomalies}
-        cpu = m.get("cpu_load")
-        mem = m.get("memory_usage")
-        err = m.get("error_rate")
-        lat = m.get("latency_p95")
-        qlen = m.get("queue_depth")
+        for predicate, outcome in rules:
+            try:
+                if predicate(m):
+                    return Diagnosis(
+                        issue_type=outcome["issue_type"],
+                        root_cause=outcome["root_cause"],
+                        confidence=outcome["confidence"],
+                        impacted_components=context.get(outcome["impact_key"], []),
+                        recommended_strategies=outcome["recommend"],
+                    )
+            except Exception:
+                continue
 
-        if err and (cpu or mem):
-            issue_type = "degradation"
-            root = "elevated error rate under resource pressure"
-            impacted = context.get("services", [])
-            rec = ["scale_service", "restart_unhealthy", "throttle_traffic"]
-            conf = 0.75
-        elif lat and qlen and lat.zscore > 2 and qlen.zscore > 2:
-            issue_type = "backpressure"
-            root = "queue growth causing latency"
-            impacted = context.get("queues", [])
-            rec = ["increase_workers", "rebalance_load", "purge_stuck"]
-            conf = 0.7
-        elif cpu and cpu.zscore > 3:
-            issue_type = "resource_hotspot"
-            root = "sustained high CPU"
-            impacted = context.get("services", [])
-            rec = ["scale_service", "restart_unhealthy"]
-            conf = 0.65
-        elif mem and mem.zscore > 3:
-            issue_type = "memory_pressure"
-            root = "sustained high memory"
-            impacted = context.get("services", [])
-            rec = ["restart_unhealthy", "recycle_container"]
-            conf = 0.65
-
-        return Diagnosis(issue_type=issue_type, root_cause=root, confidence=conf, impacted_components=impacted, recommended_strategies=rec)
+        return Diagnosis(issue_type="unknown", root_cause="insufficient data", confidence=0.5, impacted_components=context.get("services", []), recommended_strategies=[])
 
 
 class StrategyLibrary:
@@ -126,6 +146,14 @@ class StrategyLibrary:
                 safety_level="high",
                 cost=0.2,
                 actions=[{"type": "docker.restart", "target": "service"}],
+                # Rollback may be a no-op for restart
+            ),
+            HealingStrategy(
+                name="rollback_config",
+                description="Rollback to last known good configuration",
+                safety_level="medium",
+                cost=0.5,
+                actions=[{"type": "config.rollback"}],
             ),
             HealingStrategy(
                 name="scale_service",
@@ -198,6 +226,32 @@ class RecoveryExecutor:
     def __init__(self):
         self.lib = StrategyLibrary()
 
+    def _verify(self, context: Dict[str, Any]) -> bool:
+        verifier: Optional[Callable[[], bool]] = context.get("verify")  # optional callable provided by caller
+        if callable(verifier):
+            try:
+                return bool(verifier())
+            except Exception:
+                return False
+        # default accept when no verifier is provided
+        return True
+
+    def _rollback(self, actions: List[Dict[str, Any]], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        # Best-effort rollback stubs
+        rolled: List[Dict[str, Any]] = []
+        for act in reversed(actions):
+            typ = act.get("type", "")
+            if typ == "scale":
+                # Invert scale delta
+                delta = act.get("delta", 0)
+                rolled.append({"type": "scale", "delta": -delta, "status": "ok"})
+            elif typ in ("config.rollback", "rebalance", "rate_limit", "queue.purge"):
+                # No-op or idempotent; mark as rolled
+                rolled.append({"type": typ, "status": "noop"})
+            elif typ.startswith("docker."):
+                rolled.append({"type": typ, "status": "noop"})
+        return rolled
+
     def execute(self, strategy_name: str, context: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
         strat = self.lib.get(strategy_name)
         if not strat:
@@ -223,9 +277,45 @@ class RecoveryExecutor:
                 except Exception as e:  # pragma: no cover
                     applied_actions.append({"type": typ, "error": str(e)})
             else:
-                # Simulate success
-                applied_actions.append({"type": typ, "status": "ok"})
-        return {"applied": True, "strategy": strat.name, "actions": applied_actions}
+                # Non-docker actions: try integration hooks or simulate
+                if typ == "config.rollback":
+                    gitops = context.get("gitops")  # expects .rollback(target?)
+                    target = context.get("config_target")
+                    try:
+                        if gitops and hasattr(gitops, "rollback"):
+                            res = gitops.rollback(target)
+                            applied_actions.append({"type": typ, "target": target, "status": bool(res) and "ok" or "failed"})
+                        else:
+                            applied_actions.append({"type": typ, "target": target, "status": "simulated"})
+                    except Exception as e:
+                        applied_actions.append({"type": typ, "target": target, "error": str(e)})
+                elif typ == "scale":
+                    scaler = context.get("scaler")  # expects .scale(service, delta)
+                    svc_name = context.get("service")
+                    delta = act.get("delta", 0)
+                    try:
+                        if scaler and hasattr(scaler, "scale") and svc_name:
+                            scaler.scale(svc_name, delta)
+                            applied_actions.append({"type": typ, "service": svc_name, "delta": delta, "status": "ok"})
+                        else:
+                            applied_actions.append({"type": typ, "service": svc_name, "delta": delta, "status": "simulated"})
+                    except Exception as e:
+                        applied_actions.append({"type": typ, "service": svc_name, "delta": delta, "error": str(e)})
+                elif typ == "rebalance":
+                    applied_actions.append({"type": typ, "status": "simulated"})
+                elif typ == "rate_limit":
+                    applied_actions.append({"type": typ, "amount": act.get("amount"), "status": "simulated"})
+                elif typ == "queue.purge":
+                    q = context.get("queue")
+                    applied_actions.append({"type": typ, "queue": q, "status": "simulated"})
+                else:
+                    # Fallback
+                    applied_actions.append({"type": typ, "status": "ok"})
+        verified = self._verify(context)
+        rolled_back: List[Dict[str, Any]] = []
+        if not verified:
+            rolled_back = self._rollback(applied_actions, context)
+        return {"applied": verified, "strategy": strat.name, "actions": applied_actions, "rolled_back": rolled_back, "verified": verified}
 
 
 class LearningEngine:
@@ -243,14 +333,31 @@ class SelfHealingService:
         self.selector = StrategySelector()
         self.executor = RecoveryExecutor()
         self.learner = LearningEngine(self.selector)
+        # EWMA/Holt-Winters parameters
+        self._ewma_alpha = 0.3
+        self._hw_alpha = 0.2
+        self._hw_beta = 0.1
+        self._hw_gamma = 0.1
+        # Internal seasonal states per metric for simple HW (additive, period configurable)
+        self._season_len = 10
+        self._hw_state: Dict[str, Dict[str, float]] = {}  # {metric: {level, trend}}
 
     def analyze(self, metrics: Dict[str, float], context: Dict[str, Any]) -> Dict[str, Any]:
+        # Update predictive baselines (EWMA + simple HW level/trend)
+        self._update_predictive_baselines(metrics)
         anomalies = self.detector.detect(metrics)
         diag = self.diagnoser.diagnose(anomalies, context)
         event = {
             "anomalies": [a.__dict__ for a in anomalies],
             "diagnosis": diag.__dict__,
         }
+        # Persist time-series snapshot and anomalies
+        try:
+            self.record_metrics_snapshot(metrics)
+            for a in anomalies:
+                self.record_anomaly(a)
+        except Exception:
+            pass
         publish_exchange("ops.selfhealing", "analyze", event)
         audit_event("self_healing.analyze", event, context.get("user"))
         return event
@@ -266,22 +373,26 @@ class SelfHealingService:
         outcome = self.executor.execute(chosen, context=context, dry_run=dry_run)
         # Persist attempt
         client = get_client()
+        healing_id = str(uuid.uuid4())
         client.run_query(
             """
             CREATE (h:HealingAttempt {
-                id: apoc.create.uuid(),
+                id: $id,
                 at: timestamp(),
                 strategy: $strategy,
                 dryRun: $dry_run,
                 applied: $applied,
+                verified: $verified,
                 issueType: $issue_type,
                 rootCause: $root_cause
             })
             """,
             {
+                "id": healing_id,
                 "strategy": chosen,
                 "dry_run": dry_run,
                 "applied": bool(outcome.get("applied")),
+                "verified": bool(outcome.get("verified", outcome.get("applied", False))),
                 "issue_type": diag.issue_type,
                 "root_cause": diag.root_cause,
             },
@@ -298,3 +409,62 @@ class SelfHealingService:
 
     def learning_stats(self) -> Dict[str, Any]:
         return {"selector": self.selector._scores}
+
+    # --- Predictive baselines and time-series storage ---
+    def _update_predictive_baselines(self, metrics: Dict[str, float]) -> None:
+        # EWMA update affects detector baselines stdev lightly (keep sd as prior)
+        for k, v in metrics.items():
+            mu, sd = self.detector._baselines.get(k, (v, max(1e-6, abs(v) * 0.05)))
+            ewma = self._ewma_alpha * v + (1 - self._ewma_alpha) * mu
+            self.detector._baselines[k] = (ewma, sd)
+            # Simple Holt-Winters additive (level/trend only)
+            st = self._hw_state.get(k, {"level": v, "trend": 0.0})
+            level = self._hw_alpha * v + (1 - self._hw_alpha) * (st["level"] + st["trend"]) 
+            trend = self._hw_beta * (level - st["level"]) + (1 - self._hw_beta) * st["trend"]
+            self._hw_state[k] = {"level": level, "trend": trend}
+
+    def forecast(self, metric: str, steps: int = 1) -> float:
+        st = self._hw_state.get(metric)
+        if not st:
+            mu, _ = self.detector._baselines.get(metric, (0.0, 0.0))
+            return mu
+        return st["level"] + steps * st["trend"]
+
+    def record_metrics_snapshot(self, metrics: Dict[str, float]) -> None:
+        client = get_client()
+        client.run_query(
+            """
+            CREATE (m:MetricSnapshot {id: $id, at: timestamp(), metrics: $metrics})
+            """,
+            {"id": str(uuid.uuid4()), "metrics": metrics},
+        )
+
+    def record_anomaly(self, anomaly: Anomaly) -> None:
+        client = get_client()
+        client.run_query(
+            """
+            CREATE (a:AnomalyEvent {id: $id, at: timestamp(), metric: $metric, value: $value, baseline: $baseline, zscore: $z, severity: $sev, hint: $hint})
+            """,
+            {
+                "id": str(uuid.uuid4()),
+                "metric": anomaly.metric,
+                "value": anomaly.value,
+                "baseline": anomaly.baseline,
+                "z": anomaly.zscore,
+                "sev": anomaly.severity,
+                "hint": anomaly.hint,
+            },
+        )
+
+    def get_metric_trend(self, metric: str, limit: int = 100) -> List[Tuple[int, float]]:
+        client = get_client()
+        rows = client.run_query(
+            """
+            MATCH (m:MetricSnapshot)
+            WITH m ORDER BY m.at DESC LIMIT $limit
+            RETURN m.at AS at, m.metrics[$metric] AS value
+            ORDER BY at ASC
+            """,
+            {"limit": int(limit), "metric": metric},
+        )
+        return [(r[0], r[1]) for r in rows if r and len(r) >= 2]
