@@ -16,6 +16,12 @@ This document outlines the security framework for Enhanced AI Agent OS, covering
 - NGINX security policies (`infrastructure/security/nginx/security.conf`): CORS, rate limiting, headers.
 - Input validation at service layer. Enforce size/time limits.
 - Enable WAF where appropriate.
+ - Security endpoints (JWT + RBAC protected):
+   - `GET /api/security/compliance/assess` — runs compliance checks and persists a report when enabled.
+   - `GET /api/security/incidents?kind=&severity=&limit=` — list recorded security incidents.
+   - `POST /api/security/incidents` — record a new incident `{kind, severity, message, context}`.
+   - `GET /api/security/sandbox/policy` — view current sandbox policy (env-driven).
+   - `POST /api/security/sandbox/evaluate` — evaluate sandbox policy for a `risk_score` (0..1).
 
 ## Data Protection
 - Encryption in transit: TLS for all endpoints and internal comms where possible.
@@ -26,10 +32,12 @@ This document outlines the security framework for Enhanced AI Agent OS, covering
 - Prometheus alerting rules for auth failures, rate limiting spikes, and anomalous behavior (`infrastructure/monitoring/alerts/security.yml`).
 - Centralized logs (Loki/Promtail) with audit fields: user/service id, action, resource, result, IP, trace id.
 - Tracing with OTel/Jaeger including auth context (without sensitive data).
+ - Incidents API provides a lightweight SOC feed; persist can be disabled via `INCIDENT_PERSIST_DISABLED=true`.
 
 ## Audit Logging & Compliance
 - Immutable audit logs retained per policy (e.g., 1–7 years).
 - Regular compliance reports (access reviews, key rotation, vulnerability status) in `workflows/security/`.
+ - Application-level compliance assessment is exposed via `GET /api/security/compliance/assess` and can be disabled with `COMPLIANCE_PERSIST_DISABLED=true`.
 
 ## Vulnerability Management
 - Container image scanning (Trivy) and dependency scanning in CI.

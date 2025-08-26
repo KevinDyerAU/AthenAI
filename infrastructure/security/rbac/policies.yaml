@@ -21,6 +21,8 @@ roles:
         actions: ["read"]
       - resource: datasets
         actions: ["read"]
+      - resource: security
+        actions: ["read"]
 
   - name: developer
     description: Build and test workflows and agents
@@ -31,6 +33,8 @@ roles:
         actions: ["read", "invoke"]
       - resource: datasets
         actions: ["read", "write"]
+      - resource: security
+        actions: ["read"]
 
   - name: viewer
     description: Read-only visibility
@@ -42,6 +46,8 @@ roles:
       - resource: datasets
         actions: ["read"]
       - resource: monitoring
+        actions: ["read"]
+      - resource: security
         actions: ["read"]
 
 # Optional: explicit denies override allows

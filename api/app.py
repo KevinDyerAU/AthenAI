@@ -20,6 +20,7 @@ from .resources.kg_drift import ns as kg_drift_ns
 from .resources.self_healing import ns as self_healing_ns
 from .resources import coordination
 from .resources import validation
+from .resources import security as security_resources
 from .ws.events import register_socketio_events
 from .utils.rabbitmq import ensure_coordination_bindings
 from .errors import register_error_handlers
@@ -85,6 +86,7 @@ def create_app() -> Flask:
     restx_api.add_namespace(self_healing_ns, path="/api/self_healing")
     restx_api.add_namespace(coordination.ns, path="/api/coordination")
     restx_api.add_namespace(validation.ns, path="/api/validation")
+    restx_api.add_namespace(security_resources.ns, path="/api/security")
 
     # Socket.IO
     register_socketio_events(socketio)

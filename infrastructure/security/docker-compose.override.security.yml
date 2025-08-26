@@ -1,0 +1,104 @@
+version: "3.9"
+
+services:
+  api-service:
+    # Enforce sandbox-like constraints at the container/runtime layer
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 8192
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    # Optional: tighten network by only placing on internal network
+    networks:
+      - enhanced-ai-network
+
+  agent-lifecycle-manager:
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    ulimits:
+      nofile:
+        soft: 2048
+        hard: 4096
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+    networks:
+      - enhanced-ai-network
+
+  knowledge-drift-detector:
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    ulimits:
+      nofile:
+        soft: 2048
+        hard: 4096
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+    networks:
+      - enhanced-ai-network
+
+  self-healing-monitor:
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    ulimits:
+      nofile:
+        soft: 2048
+        hard: 4096
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+    networks:
+      - enhanced-ai-network
+
+networks:
+  enhanced-ai-network:
+    external: true
