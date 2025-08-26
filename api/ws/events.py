@@ -144,6 +144,16 @@ class WebSocketManager:
             # Ensure background consumer is running
             self._start_agent_updates_consumer()
 
+        @sio.on("connect", namespace="/qa")
+        def on_connect_qa():
+            uid = self._authenticate()
+            record_websocket_connection(True)
+            emit("connected", {"user_id": uid}, namespace="/qa")
+
+        @sio.on("disconnect", namespace="/qa")
+        def on_disconnect_qa():
+            record_websocket_connection(False)
+
         @sio.on("disconnect")
         def on_disconnect():
             self.active.pop(request.sid, None)

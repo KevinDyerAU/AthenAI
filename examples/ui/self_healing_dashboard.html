@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NeoV3 Self-Healing Dashboard</title>
+  <title>NeoV3 Ops Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
@@ -25,7 +25,7 @@
 </head>
 <body>
   <header>
-    <h1>Self-Healing Dashboard</h1>
+    <h1>Ops Dashboard</h1>
     <div class="row">
       <label>API Base</label>
       <input id="baseUrl" placeholder="http://localhost:8000/api" style="width:260px" />
@@ -63,6 +63,19 @@
     <section class="card">
       <h3 style="margin-top:0">Live Events</h3>
       <div class="events" id="events"></div>
+    </section>
+
+    <section class="card">
+      <h3 style="margin-top:0">Quality Gates</h3>
+      <div class="row" style="gap:16px; align-items:center;">
+        <div id="qaStatus" class="pill">Awaiting report…</div>
+        <div>Pass Rate: <strong id="qaPassRate">-</strong></div>
+        <div>Error Rate: <strong id="qaErrorRate">-</strong></div>
+        <div>P95 Latency: <strong id="qaP95">-</strong> ms</div>
+      </div>
+      <div style="margin-top:10px">
+        <button id="runValidation" class="primary">Run Validation</button>
+      </div>
     </section>
   </main>
 
@@ -141,13 +154,42 @@
         ['self_healing:analyze','self_healing:heal'].forEach(evt => {
           socket.on(evt, (payload) => addEvent(evt, payload));
         });
+        socket.on('qa.validation.report', (payload) => {
+          addEvent('qa.validation.report', payload);
+          const g = payload.gate || {};
+          el('qaPassRate').textContent = (g.pass_rate != null ? (g.pass_rate*100).toFixed(1)+'%' : '-');
+          el('qaErrorRate').textContent = (g.error_rate != null ? (g.error_rate*100).toFixed(2)+'%' : '-');
+          el('qaP95').textContent = (g.latency_p95_ms != null ? g.latency_p95_ms : '-');
+          const ok = !!g.ok;
+          const s = el('qaStatus');
+          s.textContent = ok ? 'QUALITY: OK' : 'QUALITY: FAIL';
+          s.style.background = ok ? '#1d7a3a55' : '#7a1d1d55';
+          s.style.borderColor = ok ? '#1d7a3acc' : '#7a1d1dcc';
+        });
+        socket.on('qa.gates.updated', (payload) => {
+          addEvent('qa.gates.updated', payload);
+        });
       } catch (e) {
         console.warn('Socket connect failed', e);
       }
     }
 
+    async function runValidation() {
+      const base = (el('baseUrl').value || '').replace(/\/$/, '');
+      if (!base) { alert('Set API Base'); return; }
+      const res = await fetch(`${base}/validation/run`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ include_performance: false })
+      });
+      if (!res.ok) { alert('Validation failed to run'); return; }
+      const data = await res.json();
+      addEvent('validation.run', data);
+    }
+
     el('load').addEventListener('click', loadTrendAndForecast);
     connectSocket();
+    el('runValidation').addEventListener('click', runValidation);
   </script>
 </body>
 </html>

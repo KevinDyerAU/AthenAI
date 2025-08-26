@@ -134,6 +134,21 @@ Health check: `GET /system/health` → `{ "status": "ok" }`
 Key namespaces exposed in `api/app.py`:
 - `auth`, `agents`, `workflows`, `system`, `config`, `tools`, `knowledge`, `conversations`, `kg_admin`, `kg_consensus`, `integrations`, `substrate`.
 
+## Validation & QA
+
+- Run CI quality gates locally or in CI:
+  ```bash
+  python scripts/testing/quality_gate.py
+  ```
+- Validation API (JWT): `/api/validation/*`
+  - `POST /api/validation/run` → executes pytest, behavior checks, and k6 (if configured)
+  - `GET /api/validation/report/last` → last persisted report
+  - `GET /api/validation/history?limit=20` → recent runs
+  - `GET|POST /api/validation/gates` → configure gates
+- WebSocket namespace `/qa`: events `qa.validation.report`, `qa.gates.updated`.
+- UI: open `examples/ui/qa_analytics.html` for live KPIs and history.
+- Detailed guide: `documentation/api/VALIDATION.md`.
+
 ### Autonomous agent management
 
 New namespace: `autonomy` (registered under `/api/autonomy`). Endpoints:

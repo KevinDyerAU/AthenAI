@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QA Analytics - NeoV3</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root { --bg: #0b1020; --panel: #11162a; --text: #e5e7eb; --muted: #9aa4b2; --ok: #10b981; --warn: #f59e0b; --err: #ef4444; --accent: #6366f1; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: linear-gradient(180deg, #0b1020, #090c1a 80%); color: var(--text); }
+    header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 20px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
+    .controls { display: grid; grid-auto-flow: column; gap: 10px; align-items: center; }
+    input, button { background: var(--panel); color: var(--text); border: 1px solid rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 8px; }
+    input { min-width: 280px; }
+    button { cursor: pointer; }
+    main { padding: 20px; display: grid; grid-template-columns: 380px 1fr; gap: 16px; }
+    .card { background: rgba(17,22,42,0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; backdrop-filter: blur(6px); }
+    .title { font-size: 13px; color: var(--muted); margin-bottom: 10px; letter-spacing: 0.3px; }
+    .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .kpi { padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); }
+    .kpi .label { font-size: 12px; color: var(--muted); }
+    .kpi .value { font-size: 18px; font-weight: 600; margin-top: 4px; }
+    .status { font-weight: 600; }
+    .status.ok { color: var(--ok); }
+    .status.fail { color: var(--err); }
+    .history { display: grid; gap: 8px; max-height: 480px; overflow: auto; }
+    .row { display: grid; grid-template-columns: 120px 1fr 1fr 1fr 80px; gap: 8px; align-items: center; padding: 8px; border-radius: 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); font-size: 12px; }
+    .row .ok { color: var(--ok); font-weight: 600; }
+    .row .ng { color: var(--err); font-weight: 600; }
+    .actions { display: flex; gap: 8px; }
+    .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>QA Analytics</h1>
+    <div class="controls">
+      <input id="apiBase" placeholder="API Base (e.g., http://localhost:8000/api)" />
+      <input id="jwt" placeholder="JWT (optional, required for history/run)" />
+      <button id="connectBtn">Connect WS</button>
+      <button id="runBtn">Run Validation</button>
+      <button id="refreshBtn">Refresh History</button>
+    </div>
+  </header>
+  <main>
+    <section class="card">
+      <div class="title">Quality Gates (Live)</div>
+      <div class="kpis">
+        <div class="kpi"><div class="label">Pass Rate</div><div class="value" id="passRate">—</div></div>
+        <div class="kpi"><div class="label">Error Rate</div><div class="value" id="errorRate">—</div></div>
+        <div class="kpi"><div class="label">Latency P95 (ms)</div><div class="value" id="latP95">—</div></div>
+        <div class="kpi"><div class="label">Gate</div><div class="value status" id="gateStatus">—</div></div>
+      </div>
+      <canvas id="trendCanvas" height="160" style="margin-top:12px"></canvas>
+      <div class="note">Receives Socket.IO events: qa.validation.report, qa.gates.updated on namespace /qa.</div>
+    </section>
+    <section class="card">
+      <div class="title">Recent Validation Runs</div>
+      <div class="history" id="history"></div>
+    </section>
+  </main>
+
+  <script>
+    const s = {
+      apiBase: document.getElementById('apiBase'),
+      jwt: document.getElementById('jwt'),
+      connectBtn: document.getElementById('connectBtn'),
+      runBtn: document.getElementById('runBtn'),
+      refreshBtn: document.getElementById('refreshBtn'),
+      passRate: document.getElementById('passRate'),
+      errorRate: document.getElementById('errorRate'),
+      latP95: document.getElementById('latP95'),
+      gateStatus: document.getElementById('gateStatus'),
+      history: document.getElementById('history'),
+    };
+
+    let socket = null;
+    let trendChart = null;
+    const trendData = [];
+
+    function connectWS() {
+      if (socket) { socket.disconnect(); }
+      const auth = {};
+      const token = s.jwt.value.trim();
+      if (token) { auth.token = token; }
+      socket = io('/qa', { transports: ['websocket'], auth });
+      socket.on('connect', () => console.log('WS connected /qa'));
+      socket.on('connected', (p) => console.log('connected payload', p));
+      socket.on('qa.validation.report', onReport);
+      socket.on('qa.gates.updated', (p) => console.log('gates updated', p));
+      socket.on('disconnect', () => console.log('WS disconnected /qa'));
+    }
+
+    function onReport(res) {
+      const gate = (res && res.gate) || {};
+      const pr = gate.pass_rate ?? gate.passRate ?? null;
+      const er = gate.error_rate ?? gate.errorRate ?? null;
+      const lp = gate.latency_p95_ms ?? gate.latencyP95 ?? null;
+      if (pr != null) s.passRate.textContent = (pr*100).toFixed(1) + '%';
+      if (er != null) s.errorRate.textContent = (er*100).toFixed(2) + '%';
+      if (lp != null) s.latP95.textContent = Number(lp).toFixed(1);
+      const ok = !!gate.ok;
+      s.gateStatus.textContent = ok ? 'PASS' : 'FAIL';
+      s.gateStatus.className = 'value status ' + (ok ? 'ok' : 'fail');
+      // trend
+      if (pr != null) {
+        trendData.push({ t: new Date(), v: pr });
+        if (trendData.length > 50) trendData.shift();
+        renderTrend();
+      }
+      // prepend to history if full payload has run id
+      if (res && res.id) {
+        prependHistory({
+          id: res.id,
+          at: Date.now(),
+          ok: ok,
+          passRate: pr,
+          errorRate: er,
+          latencyP95: lp,
+        });
+      }
+    }
+
+    function renderTrend() {
+      const ctx = document.getElementById('trendCanvas');
+      const labels = trendData.map(d => d.t.toLocaleTimeString());
+      const values = trendData.map(d => Math.round(d.v * 1000) / 10);
+      if (!trendChart) {
+        trendChart = new Chart(ctx, {
+          type: 'line',
+          data: { labels, datasets: [{ label: 'Pass Rate %', data: values, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.15)', tension: 0.25, fill: true, pointRadius: 0 }] },
+          options: { scales: { y: { suggestedMin: 0, suggestedMax: 100 }}, plugins: { legend: { display: false } } }
+        });
+      } else {
+        trendChart.data.labels = labels;
+        trendChart.data.datasets[0].data = values;
+        trendChart.update();
+      }
+    }
+
+    async function apiFetch(path, opts={}) {
+      const base = s.apiBase.value.trim().replace(/\/$/, '');
+      const url = base + path;
+      const headers = Object.assign({ 'Content-Type': 'application/json' }, (opts.headers||{}));
+      const token = s.jwt.value.trim();
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const res = await fetch(url, Object.assign(opts, { headers }));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }
+
+    async function loadHistory() {
+      try {
+        const data = await apiFetch('/validation/history?limit=25');
+        const items = (data && data.items) || [];
+        s.history.innerHTML = '';
+        items.forEach(prependHistory);
+      } catch (e) {
+        console.warn('history error', e);
+      }
+    }
+
+    function prependHistory(item) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const at = item.at ? new Date(Number(item.at)).toLocaleString() : '—';
+      row.innerHTML = `
+        <div>${at}</div>
+        <div>${(item.passRate!=null)? ((item.passRate*100).toFixed(1)+'%') : '—'}</div>
+        <div>${(item.errorRate!=null)? ((item.errorRate*100).toFixed(2)+'%') : '—'}</div>
+        <div>${(item.latencyP95!=null)? (Number(item.latencyP95).toFixed(1)) : '—'}</div>
+        <div class="${item.ok? 'ok':'ng'}">${item.ok? 'PASS':'FAIL'}</div>
+      `;
+      s.history.prepend(row);
+    }
+
+    async function runValidation() {
+      try {
+        const res = await apiFetch('/validation/run', { method: 'POST', body: JSON.stringify({}) });
+        console.log('run response', res);
+      } catch (e) { console.warn('run error', e); }
+    }
+
+    s.connectBtn.onclick = connectWS;
+    s.refreshBtn.onclick = loadHistory;
+    s.runBtn.onclick = runValidation;
+  </script>
+</body>
+</html>
