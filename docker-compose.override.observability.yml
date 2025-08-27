@@ -22,15 +22,20 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    environment:
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "512m"
+      NEO4J_server_memory_pagecache_size: "256m"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
+      test: ["CMD-SHELL", "pass=\"$$(echo \"$$NEO4J_AUTH\" | cut -d'/' -f2)\"; cypher-shell -u neo4j -p \"$$pass\" 'RETURN 1' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 1g
           cpus: "1.0"
 
   rabbitmq:
