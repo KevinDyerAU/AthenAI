@@ -147,6 +147,30 @@ ensure_secrets(){
   ensure_secret_nonempty N8N_ENCRYPTION_KEY 48
 
   # Additional common secrets from .env.example that are often left blank
+load_optional_secrets(){
+  local secrets_file="$PROJECT_DIR/.env.secrets"
+  if [[ -f "$secrets_file" ]]; then
+    set -a
+    source "$secrets_file"
+    set +a
+  fi
+}
+load_optional_secrets(){
+  local secrets_file="$PROJECT_DIR/.env.secrets"
+  if [[ -f "$secrets_file" ]]; then
+    set -a
+    source "$secrets_file"
+    set +a
+  fi
+}
+load_optional_secrets(){
+  local secrets_file="$PROJECT_DIR/.env.secrets"
+  if [[ -f "$secrets_file" ]]; then
+    set -a
+    source "$secrets_file"
+    set +a
+  fi
+}
   ensure_secret_nonempty JWT_SECRET 48
   ensure_secret_nonempty ENCRYPTION_KEY 48
   ensure_secret_nonempty HMAC_SECRET 48
@@ -173,6 +197,14 @@ ensure_dirs(){
     "enhanced-ai-agent-os/backups/n8n"
     "enhanced-ai-agent-os/data/prometheus"
     "enhanced-ai-agent-os/data/grafana"
+load_optional_secrets(){
+  local secrets_file="$PROJECT_DIR/.env.secrets"
+  if [[ -f "$secrets_file" ]]; then
+    set -a
+    source "$secrets_file"
+    set +a
+  fi
+}
     "enhanced-ai-agent-os/logs/grafana"
     "enhanced-ai-agent-os/data/alertmanager"
     "enhanced-ai-agent-os/data/loki"
@@ -364,7 +396,7 @@ validate_stack(){
   if (( fail > 0 )); then err "One or more validation checks failed"; fi
 }
 
-generate_override{
+generate_override(){
   cat >"$OVERRIDE_FILE" <<EOF
 volumes:
   postgres_data:
@@ -513,18 +545,27 @@ ensure_gitignore(){
   fi
 }
 
+load_optional_secrets(){
+  local secrets_file="$PROJECT_DIR/.env.secrets"
+  if [[ -f "$secrets_file" ]]; then
+    set -a
+    source "$secrets_file"
+    set +a
+  fi
+}
 main(){
   : >"$LOG_FILE"
   require_tools
   if [[ "$CHECK_ONLY" == true ]]; then run_check; exit 0; fi
   ensure_env
   if [[ "$FRESH_START" == true ]]; then fresh_down; fresh_reset; ensure_env; fi
+  load_secrets
   ensure_secrets
   ensure_dirs
   generate_override
   ensure_gitignore
   ensure_network
-  [[ "$SKIP_PULL" == false ]] && { log "docker compose pull"; docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" --env-file "$ENV_FILE" pull || true; }
+  [[ "$SKIP_PULL" == false ]] && { log "docker compose pull"; docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" pull || true; }
   if [[ "$STATUS_ONLY" == true ]]; then
     summary; exit 0
   fi
@@ -534,7 +575,7 @@ main(){
   phase_orchestration
   phase_api
   summary
-  success "Local deployment completed. Access: API http://localhost:5000, Grafana http://localhost:3000, Prometheus http://localhost:9090, n8n http://localhost:5678"
+  success "Local deployment completed. Access: API http://localhost:8000, Grafana http://localhost:3000, Prometheus http://localhost:9090, n8n http://localhost:5678"
 }
 
 main "$@"
