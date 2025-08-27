@@ -4,6 +4,7 @@ deploy_tmp/
 .env.*
 !.env*.example
 !unified.env.example
+.env.secrets
 
 # Deployment logs
 deployment.local.log

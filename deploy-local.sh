@@ -14,6 +14,7 @@ LOG_FILE="$PROJECT_DIR/deployment.local.log"
 # Temp deployment root (per-run)
 TIMESTAMP="$(date +'%Y%m%d-%H%M%S')"
 DEPLOY_TMP_ROOT="$PROJECT_DIR/deploy_tmp/$TIMESTAMP"
+OBS_OVERRIDE_FILE="$PROJECT_DIR/docker-compose.override.observability.yml"
 OVERRIDE_FILE="$DEPLOY_TMP_ROOT/docker-compose.override.yml"
 
 # --- Colors ---
@@ -73,6 +74,16 @@ ensure_env(){
     if [[ -f "$cand" ]]; then cp -f "$cand" "$ENV_FILE"; warn "Created .env from $(basename "$cand"). Review secrets before first run"; return; fi
   done
   err "No .env found. Add $ENV_FILE first."
+}
+
+load_secrets(){
+  local secrets_file="$PROJECT_DIR/.env.secrets"
+  if [[ -f "$secrets_file" ]]; then
+    info "Loading .env.secrets into environment for this session"
+    set -a
+    source "$secrets_file"
+    set +a
+  fi
 }
 
 generate_secret(){
@@ -219,13 +230,22 @@ check_env_keys(){
   fi
   success "All required .env keys present"
 }
+preflight_prepare(){
+  require_tools
+  ensure_env
+  load_secrets
+  ensure_secrets
+  ensure_dirs
+  ensure_network
+}
+
 
 run_check(){
   log "Running preflight checks (no changes)"
   require_tools
   check_env_keys
-  if docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config >/dev/null 2>&1; then success "docker compose config OK"; else err "docker compose config failed"; fi
-  echo -e "\n=== existing containers (if any) ==="; docker_compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps || true
+  if docker_compose -f "$COMPOSE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" config >/dev/null 2>&1; then success "docker compose config OK"; else err "docker compose config failed"; fi
+  echo -e "\n=== existing containers (if any) ==="; docker_compose -f "$COMPOSE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" ps || true
   echo -e "\n=== health (if running) ===";
   for c in \
     enhanced-ai-postgres \
@@ -249,8 +269,7 @@ check_http(){
 
 # Verify API JSON health endpoint and fail fast if degraded
 verify_api_health(){
-  # Compose maps API to host port 5000 and exposes /system/health
-  local port="5000"
+  local port="${API_HOST_PORT:-8000}"
   local url="http://localhost:${port}/system/health"
   log "Verifying API health at ${url}"
   local body
@@ -266,11 +285,12 @@ verify_api_health(){
 }
 
 phase_core(){
-  log "Starting core: postgres, neo4j, rabbitmq"
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" up -d $DOCKER_UP_ARGS postgres neo4j rabbitmq
+  log "Starting core: postgres, neo4j, rabbitmq, redis"
+  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS postgres neo4j rabbitmq redis
   wait_healthy enhanced-ai-postgres 300
   wait_healthy enhanced-ai-neo4j 480
   wait_healthy enhanced-ai-rabbitmq 300
+  wait_healthy enhanced-ai-redis 180
 }
 
 phase_migrations(){
@@ -291,7 +311,7 @@ phase_migrations(){
 
 phase_monitoring(){
   log "Starting monitoring: prometheus grafana loki promtail alertmanager otel-collector"
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" up -d $DOCKER_UP_ARGS prometheus grafana loki promtail alertmanager otel-collector || true
+  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS prometheus grafana loki promtail alertmanager otel-collector || true
   # Lightweight HTTP checks on common ports
   local gp="${GRAFANA_PORT:-3000}" pp="${PROMETHEUS_PORT:-9090}" lp="${LOKI_PORT:-3100}" ap="${ALERTMANAGER_PORT:-9093}"
   check_http "Grafana" "http://localhost:${gp}/api/health"
@@ -302,21 +322,21 @@ phase_monitoring(){
 
 phase_orchestration(){
   log "Starting orchestration: n8n"
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" up -d $DOCKER_UP_ARGS n8n
+  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS n8n
   wait_healthy enhanced-ai-n8n 420 || warn "n8n health check not yet green; continuing"
 }
 
 phase_api(){
   log "Building and starting API"
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" build api-service
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" up -d $DOCKER_UP_ARGS api-service
+  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" build api-service
+  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS api-service
   wait_healthy enhanced-ai-agent-api 300
   verify_api_health
 }
 
 summary(){
   echo -e "\n=== docker compose ps ===" | tee -a "$LOG_FILE"
-  docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" --env-file "$ENV_FILE" ps | tee -a "$LOG_FILE"
+  docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" ps | tee -a "$LOG_FILE"
   echo -e "\n=== health summary ==="
   for c in \
     enhanced-ai-postgres \
@@ -330,6 +350,18 @@ summary(){
     enhanced-ai-agent-api; do
     print_health "$c"
   done | tee -a "$LOG_FILE"
+}
+
+validate_stack(){
+  local ok=0 fail=0
+  if curl -fsS "http://localhost:${API_HOST_PORT:-8000}/system/health" >/dev/null 2>&1; then ok=$((ok+1)); else echo "API health check failed"; fail=$((fail+1)); fi
+  if docker exec enhanced-ai-postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -c "select 1;" >/dev/null 2>&1; then ok=$((ok+1)); else echo "Postgres query failed"; fail=$((fail+1)); fi
+  if docker exec enhanced-ai-neo4j cypher-shell -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_PASSWORD:-neo4j}" "RETURN 1;" >/dev/null 2>&1; then ok=$((ok+1)); else echo "Neo4j query failed"; fail=$((fail+1)); fi
+  if docker exec enhanced-ai-redis redis-cli PING | grep -q PONG; then ok=$((ok+1)); else echo "Redis PING failed"; fail=$((fail+1)); fi
+  if curl -fsS "http://localhost:15672/api/overview" -u "${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}" >/dev/null 2>&1; then ok=$((ok+1)); else echo "RabbitMQ management check failed"; fail=$((fail+1)); fi
+  if curl -fsS "http://localhost:5678" >/dev/null 2>&1; then ok=$((ok+1)); else echo "n8n HTTP check failed"; fail=$((fail+1)); fi
+  echo "Validation passed=${ok} failed=${fail}"
+  if (( fail > 0 )); then err "One or more validation checks failed"; fi
 }
 
 generate_override(){
@@ -487,12 +519,13 @@ main(){
   if [[ "$CHECK_ONLY" == true ]]; then run_check; exit 0; fi
   ensure_env
   if [[ "$FRESH_START" == true ]]; then fresh_down; fresh_reset; ensure_env; fi
+  load_secrets
   ensure_secrets
   ensure_dirs
   generate_override
   ensure_gitignore
   ensure_network
-  [[ "$SKIP_PULL" == false ]] && { log "docker compose pull"; docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" --env-file "$ENV_FILE" pull || true; }
+  [[ "$SKIP_PULL" == false ]] && { log "docker compose pull"; docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" pull || true; }
   if [[ "$STATUS_ONLY" == true ]]; then
     summary; exit 0
   fi
@@ -502,7 +535,7 @@ main(){
   phase_orchestration
   phase_api
   summary
-  success "Local deployment completed. Access: API http://localhost:5000, Grafana http://localhost:3000, Prometheus http://localhost:9090, n8n http://localhost:5678"
+  success "Local deployment completed. Access: API http://localhost:8000, Grafana http://localhost:3000, Prometheus http://localhost:9090, n8n http://localhost:5678"
 }
 
 main "$@"
