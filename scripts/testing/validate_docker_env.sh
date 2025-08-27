@@ -13,7 +13,7 @@ check() {
   fi
 }
 
-check "API /system/health" "curl -fsS http://localhost:5000/system/health"
+check "API /system/health" "curl -fsS http://localhost:8000/system/health"
 check "Postgres SELECT 1" "docker exec enhanced-ai-postgres psql -U \"${POSTGRES_USER:-postgres}\" -d \"${POSTGRES_DB:-postgres}\" -c 'select 1;'"
 check "Neo4j RETURN 1" "docker exec enhanced-ai-neo4j cypher-shell -u \"${NEO4J_USER:-neo4j}\" -p \"${NEO4J_PASSWORD:-neo4j}\" 'RETURN 1;'"
 check "Redis PING" "docker exec enhanced-ai-redis redis-cli PING | grep -q PONG"

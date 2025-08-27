@@ -147,30 +147,6 @@ ensure_secrets(){
   ensure_secret_nonempty N8N_ENCRYPTION_KEY 48
 
   # Additional common secrets from .env.example that are often left blank
-load_optional_secrets(){
-  local secrets_file="$PROJECT_DIR/.env.secrets"
-  if [[ -f "$secrets_file" ]]; then
-    set -a
-    source "$secrets_file"
-    set +a
-  fi
-}
-load_optional_secrets(){
-  local secrets_file="$PROJECT_DIR/.env.secrets"
-  if [[ -f "$secrets_file" ]]; then
-    set -a
-    source "$secrets_file"
-    set +a
-  fi
-}
-load_optional_secrets(){
-  local secrets_file="$PROJECT_DIR/.env.secrets"
-  if [[ -f "$secrets_file" ]]; then
-    set -a
-    source "$secrets_file"
-    set +a
-  fi
-}
   ensure_secret_nonempty JWT_SECRET 48
   ensure_secret_nonempty ENCRYPTION_KEY 48
   ensure_secret_nonempty HMAC_SECRET 48
@@ -197,14 +173,6 @@ ensure_dirs(){
     "enhanced-ai-agent-os/backups/n8n"
     "enhanced-ai-agent-os/data/prometheus"
     "enhanced-ai-agent-os/data/grafana"
-load_optional_secrets(){
-  local secrets_file="$PROJECT_DIR/.env.secrets"
-  if [[ -f "$secrets_file" ]]; then
-    set -a
-    source "$secrets_file"
-    set +a
-  fi
-}
     "enhanced-ai-agent-os/logs/grafana"
     "enhanced-ai-agent-os/data/alertmanager"
     "enhanced-ai-agent-os/data/loki"
@@ -545,14 +513,6 @@ ensure_gitignore(){
   fi
 }
 
-load_optional_secrets(){
-  local secrets_file="$PROJECT_DIR/.env.secrets"
-  if [[ -f "$secrets_file" ]]; then
-    set -a
-    source "$secrets_file"
-    set +a
-  fi
-}
 main(){
   : >"$LOG_FILE"
   require_tools
