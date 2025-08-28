@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NeoV3 — Local Dev Portal</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --card: #0b1324;
+      --muted: #94a3b8;
+      --text: #e5e7eb;
+      --accent: #22c55e;
+      --accent-2: #60a5fa;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --link: #8bafff;
+      --border: #1f2937;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+      background: radial-gradient(1200px 600px at 20% -10%, #1b2440 0%, transparent 60%),
+                  radial-gradient(800px 500px at 100% -10%, #172038 0%, transparent 55%),
+                  var(--bg);
+    }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header {
+      padding: 40px 24px 16px;
+      display: grid;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(16,24,40,.7), rgba(16,24,40,0));
+    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .title { font-size: 28px; font-weight: 700; letter-spacing: .3px; }
+    .subtitle { color: var(--muted); }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .card {
+      background: rgba(14, 23, 43, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+    .card h3 { margin: 0 0 8px; font-size: 16px; }
+    .desc { color: var(--muted); font-size: 13px; margin: 4px 0 10px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 10px; border: 1px dashed #2b354a; border-radius: 999px;
+      background: #0a1122; color: #cbd5e1; font-size: 12px;
+    }
+    .links { display: grid; gap: 8px; }
+    .links a { display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid #1f2937; background: #0b1223; }
+    .links a:hover { background: #0e162b; }
+    .section-title { margin: 24px 0 12px; font-size: 18px; font-weight: 700; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12.5px; }
+    pre { background: #0b1223; border: 1px solid #1f2937; border-radius: 10px; padding: 12px; overflow: auto; }
+    .cols { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .kbd { font: inherit; background: #0d1427; border: 1px solid #243045; padding: 2px 6px; border-radius: 6px; }
+    footer { color: var(--muted); border-top: 1px solid var(--border); padding: 16px 24px; font-size: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <div class="title">NeoV3 — Local Dev Portal</div>
+      <div class="subtitle">Quick links, health, and a short tutorial for your local stack</div>
+      <div class="pill">Tip: manage the stack with <code>./deploy-local.sh</code></div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="grid" aria-label="Quick Links">
+      <div class="card">
+        <h3>API</h3>
+        <div class="desc">Core backend service, exposed on port 8000.</div>
+        <div class="links">
+          <a href="http://localhost:__API_PORT__/system/health" target="_blank">/system/health</a>
+          <a href="http://localhost:__API_PORT__/docs" target="_blank">/docs (if enabled)</a>
+          <a href="http://localhost:__API_PORT__/redoc" target="_blank">/redoc (if enabled)</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>n8n</h3>
+        <div class="desc">Workflow orchestrator.</div>
+        <div class="links">
+          <a href="http://localhost:__N8N_PORT__" target="_blank">n8n UI (http://localhost:__N8N_PORT__)</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Grafana</h3>
+        <div class="desc">Dashboards and visualization.</div>
+        <div class="links">
+          <a href="http://localhost:__GRAFANA_PORT__" target="_blank">Grafana Home</a>
+          <a href="http://localhost:__GRAFANA_PORT__/api/health" target="_blank">API Health</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Prometheus</h3>
+        <div class="desc">Metrics collection.</div>
+        <div class="links">
+          <a href="http://localhost:__PROMETHEUS_PORT__" target="_blank">UI</a>
+          <a href="http://localhost:__PROMETHEUS_PORT__/-/ready" target="_blank">/-/ready</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Alertmanager</h3>
+        <div class="desc">Alert routing.</div>
+        <div class="links">
+          <a href="http://localhost:__ALERTMANAGER_PORT__" target="_blank">UI</a>
+          <a href="http://localhost:__ALERTMANAGER_PORT__/-/ready" target="_blank">/-/ready</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Loki</h3>
+        <div class="desc">Log aggregation (no standalone UI).</div>
+        <div class="links">
+          <a href="http://localhost:__LOKI_PORT__/ready" target="_blank">/ready</a>
+          <a href="http://localhost:__GRAFANA_PORT__/explore" target="_blank">Explore in Grafana</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>RabbitMQ</h3>
+        <div class="desc">Messaging broker & management UI.</div>
+        <div class="links">
+          <a href="http://localhost:__RABBITMQ_MGMT_PORT__" target="_blank">Management UI</a>
+          <a href="http://localhost:__RABBITMQ_MGMT_PORT__/api/overview" target="_blank">API /overview</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Neo4j</h3>
+        <div class="desc">Graph database & browser.</div>
+        <div class="links">
+          <a href="http://localhost:__NEO4J_HTTP_PORT__" target="_blank">Neo4j Browser</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Documentation</h3>
+        <div class="desc">Repo docs bundled with the project.</div>
+        <div class="links">
+          <a href="documentation/api/README.md" target="_blank">API Docs (README)</a>
+          <a href="documentation/api/redoc.html" target="_blank">OpenAPI (static Redoc)</a>
+          <a href="documentation/architecture/README.md" target="_blank">Architecture</a>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="section-title">Getting Started</h2>
+      <div class="cols">
+        <div class="card">
+          <h3>1) Prepare environment</h3>
+          <div class="desc">Ensure your tools are available and variables exist.</div>
+          <pre><code># From repo root (Linux/macOS or WSL)
+./deploy-local.sh --check
+
+# If .env is missing, it will be created from .env.example/unified.env.example
+# Review and adjust secrets in .env and optionally .env.secrets</code></pre>
+        </div>
+
+        <div class="card">
+          <h3>2) Start the stack</h3>
+          <div class="desc">Fresh build and recreate containers.</div>
+          <pre><code>./deploy-local.sh --fresh
+
+# Or reuse existing containers without recreating
+./deploy-local.sh --reuse</code></pre>
+        </div>
+
+        <div class="card">
+          <h3>3) Check status</h3>
+          <div class="desc">Summarize container health and endpoints.</div>
+          <pre><code>./deploy-local.sh --status</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="section-title">Common Endpoints</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>API Quick Test</h3>
+          <pre><code>curl -fsS http://localhost:__API_PORT__/system/health | jq .
+# Expect status: ok</code></pre>
+        </div>
+        <div class="card">
+          <h3>Postgres (inside container)</h3>
+          <pre><code>docker exec -it enhanced-ai-postgres psql \
+  -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}</code></pre>
+        </div>
+        <div class="card">
+          <h3>Neo4j (inside container)</h3>
+          <pre><code>docker exec -it enhanced-ai-neo4j cypher-shell \
+  -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD:-neo4j}</code></pre>
+        </div>
+        <div class="card">
+          <h3>RabbitMQ Management</h3>
+          <pre><code>open http://localhost:15672
+# Credentials come from .env (RABBITMQ_DEFAULT_USER / RABBITMQ_DEFAULT_PASS)</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="section-title">Troubleshooting</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Line endings on Windows</h3>
+          <div class="desc">If you see <span class="kbd">bash\r</span> errors:</div>
+          <pre><code># Run in WSL
+sed -i 's/\r$//' ./deploy-local.sh
+chmod +x ./deploy-local.sh</code></pre>
+        </div>
+        <div class="card">
+          <h3>Compose config check</h3>
+          <pre><code>docker compose -f docker-compose.yml \
+  -f docker-compose.override.observability.yml \
+  --env-file .env config</code></pre>
+        </div>
+        <div class="card">
+          <h3>View logs</h3>
+          <pre><code># Tail API logs
+docker logs -f enhanced-ai-agent-api
+
+# All services
+docker compose ps
+</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    NeoV3 • Local development portal • <span title="Generated">index.html</span>
+  </footer>
+</body>
+</html>

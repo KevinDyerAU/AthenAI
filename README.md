@@ -422,6 +422,47 @@ Default ports:
 - Loki: 3100
 - Redis: 6379
 
+### Local Portal (index.html)
+
+Serve the landing page with adaptive links (ports resolved from env/.env/defaults):
+
+- PowerShell (Windows):
+  ```powershell
+  # default serve port 8088
+  ./start-index.ps1
+
+  # custom serve port
+  ./start-index.ps1 -Port 8090
+
+  # override service ports for links
+  $Env:API_HOST_PORT=9000; $Env:GRAFANA_PORT=3300; ./start-index.ps1
+  ```
+
+- Bash (WSL/Linux/macOS):
+  ```bash
+  # default serve port 8088
+  ./start-index.sh
+
+  # custom serve port
+  ./start-index.sh 8090
+
+  # override service ports for links
+  API_HOST_PORT=9000 GRAFANA_PORT=3300 ./start-index.sh
+  ```
+
+The server reads ports in this priority: process environment → `.env` → defaults.
+
+Placeholders resolved in `index.html`:
+
+- `API_HOST_PORT` or `API_PORT` → API
+- `N8N_PORT` → n8n
+- `GRAFANA_PORT` → Grafana
+- `PROMETHEUS_PORT` → Prometheus
+- `ALERTMANAGER_PORT` → Alertmanager
+- `LOKI_PORT` → Loki
+- `RABBITMQ_MGMT_PORT` (or `RABBITMQ_MANAGEMENT_PORT`) → RabbitMQ UI
+- `NEO4J_HTTP_PORT` (or `NEO4J_PORT_HTTP`/`NEO4J_PORT`) → Neo4j Browser
+
 Troubleshooting:
 - Increase Docker resources if services fail health checks.
 - For disk pressure, rotate/prune Docker logs and cache.
