@@ -398,6 +398,34 @@ If `WebhookBase` differs from `N8N_BASE_URL`, pass `-WebhookBase "https://your-p
 - Workflows: `workflows/enhanced/*.json`
 - Guide: `documentation/workflows/Enhanced-Workflows-Guide.md`
 
+## Docker Development Environment
+
+- Prepare env:
+  - cp unified.env.example .env
+  - Create .env.secrets (gitignored) for real keys (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY). Do not commit secrets.
+- Start stack:
+  - ./deploy-local.sh --fresh
+- Status:
+  - ./deploy-local.sh --status
+- Validate:
+  - ./deploy-local.sh --check
+  - scripts/testing/validate_docker_env.sh
+
+Default ports:
+- API: 8000 (container 5000)
+- n8n: 5678
+- Postgres: 5432
+- Neo4j: 7474/7687
+- RabbitMQ: 15672/5672
+- Grafana: 3000
+- Prometheus: 9090
+- Loki: 3100
+- Redis: 6379
+
+Troubleshooting:
+- Increase Docker resources if services fail health checks.
+- For disk pressure, rotate/prune Docker logs and cache.
+- Use --fresh to reset state; .env.secrets is loaded but never written.
 ## Quick test
 
 Use the included simple integration test (requires API running locally and default envs):
