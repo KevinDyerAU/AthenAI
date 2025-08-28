@@ -20,3 +20,6 @@ requests>=2.32.0
 python-socketio>=5.11.3
 prometheus-client>=0.20.0
 gunicorn==21.2.0
+
+# Required for `import yaml` in api/security/policy.py
+PyYAML==6.0.2

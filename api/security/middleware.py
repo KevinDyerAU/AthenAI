@@ -3,7 +3,7 @@ from functools import wraps
 from typing import Callable
 from flask import request
 from flask_restx import abort
-from flask_jwt_extended import verify_jwt_in_request_optional, get_jwt_identity
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 from .policy import load_policy, get_user_roles
 
 
@@ -15,7 +15,8 @@ def require_permission(resource: str, action: str):
     def decorator(f: Callable):
         @wraps(f)
         def wrapper(*args, **kwargs):
-            verify_jwt_in_request_optional()
+            # In JWT-Extended v4+, use verify_jwt_in_request(optional=True) to allow anonymous access
+            verify_jwt_in_request(optional=True)
             identity = get_jwt_identity()
             roles = get_user_roles(identity)
             attrs = {

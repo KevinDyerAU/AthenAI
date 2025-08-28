@@ -1,0 +1,2 @@
+# Enforce LF line endings for environment file to avoid CR issues inside containers
+.env text eol=lf

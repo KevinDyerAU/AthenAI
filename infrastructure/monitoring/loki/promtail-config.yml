@@ -25,14 +25,14 @@ scrape_configs:
             msg: message
       # Fallback: try to extract X-Correlation-ID from plain text logs
       - regex:
-          expression: 
-            '.*(?:X-Correlation-ID|correlation_id)[=: ]+([a-fA-F0-9\-]{8,})'
+          # Use a named capture group so the value is stored as 'correlation_id'
+          expression: '.*(?:X-Correlation-ID|correlation_id)[=: ]+(?P<correlation_id>[a-fA-F0-9\-]{8,})'
           source: msg
           # If msg is not present (non-JSON), apply on the raw log line
           # Note: promtail uses extracted "log" field by docker stage
       - labels:
-          correlation_id:
-            from: correlation_id
+          # Use value from extracted data with the same key name
+          correlation_id: correlation_id
     static_configs:
       - targets: [localhost]
         labels:

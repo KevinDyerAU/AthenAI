@@ -67,8 +67,11 @@ OPTIONS {
 // (KnowledgeSnapshot)-[:PREVIOUS]->(KnowledgeSnapshot)
 
 // =====================
-// Example upsert procedures (safe templates)
+// Example upsert procedures (templates only)
+// NOTE: Commented out so schema migration can run without parameters.
+//       Copy to your app code and bind parameters when executing.
 // =====================
+/*
 // Merge KnowledgeEntity by id
 // :param id => string
 // :param content => string
@@ -112,3 +115,4 @@ MATCH (ke:KnowledgeEntity {id:$entity_id})
 MERGE (s:KnowledgeSnapshot {id:$snap_id})
 ON CREATE SET s.entity_id=$entity_id, s.version=$version, s.content=$content, s.created_at=datetime(), s.metadata=$metadata
 MERGE (ke)-[:HAS_SNAPSHOT]->(s);
+*/

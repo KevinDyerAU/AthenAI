@@ -107,8 +107,8 @@ services:
         echo 'Waiting for Neo4j...'; sleep 5;
       done;
       for f in /docker-entrypoint-initdb.d/*.cypher; do
-        echo \"Applying $f\";
-        cypher-shell -a neo4j:7687 -u neo4j -p ${NEO4J_PASSWORD} -f \"$f\" || exit 1;
+        echo \"Applying $$f\";
+        cypher-shell -a neo4j:7687 -u neo4j -p ${NEO4J_PASSWORD} -f \"$$f\" || exit 1;
       done;
       echo 'Neo4j init completed.'
       "
@@ -636,171 +636,46 @@ services:
 volumes:
   # Database Volumes
   postgres_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/postgres
   postgres_backups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/backups/postgres
 
   # Neo4j Volumes
   neo4j_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/neo4j/data
   neo4j_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/neo4j/logs
   neo4j_import:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/neo4j/import
   neo4j_plugins:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/neo4j/plugins
   neo4j_backups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/backups/neo4j
 
   # RabbitMQ Volumes
   rabbitmq_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/rabbitmq
   rabbitmq_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/logs/rabbitmq
   rabbitmq_backups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/backups/rabbitmq
 
   # n8n Volumes
   n8n_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/n8n
   n8n_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/logs/n8n
   n8n_backups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/backups/n8n
 
   # Monitoring Volumes
   prometheus_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/prometheus
   prometheus_config:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./infrastructure/monitoring/prometheus
 
   grafana_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/grafana
   grafana_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/logs/grafana
 
   # Alertmanager Volume
   alertmanager_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/alertmanager
 
   loki_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/data/loki
 
   # API persistence
   api-logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./logs/api
   api-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./data/api
 
   # Agent-specific Volumes
   agent-config:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/agents/config
   agent-implementations:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/agents/implementations
   agent-metrics:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/agents/metrics
   agent-logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./enhanced-ai-agent-os/logs/agents
 
 # =============================================================================
 # NETWORKS

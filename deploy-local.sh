@@ -70,7 +70,7 @@ require_tools(){ command -v docker >/dev/null || err "Docker not found"; docker 
 ensure_env(){
   if [[ -f "$ENV_FILE" ]]; then log ".env found"; return; fi
   for cand in "${ENV_EXAMPLE_CANDIDATES[@]}"; do
-    if [[ -f "$cand" ]]; then cp -f "$cand" "$ENV_FILE"; warn "Created .env from $(basename "$cand"). Review secrets before first run"; return; fi
+    if [[ -f "$cand" ]]; then cp -f "$cand" "$ENV_FILE"; warn "Created .env from $(basename "$cand"). Review secrets before first run"; normalize_env_file; return; fi
   done
   err "No .env found. Add $ENV_FILE first."
 }
@@ -83,7 +83,13 @@ generate_secret(){
 
 set_env_if_missing(){
   local key="$1" val="$2"
-  grep -qE "^\s*${key}\s*=" "$ENV_FILE" 2>/dev/null || { echo "${key}=${val}" >>"$ENV_FILE"; log "Initialized ${key} in .env"; }
+  grep -qE "^\s*${key}\s*=" "$ENV_FILE" 2>/dev/null || { printf '%s\n' "${key}=${val}" >>"$ENV_FILE"; log "Initialized ${key} in .env"; normalize_env_file; }
+}
+
+# Normalize .env to LF endings and trim trailing whitespace to avoid CR (0x0D) issues in containers
+normalize_env_file(){
+  # Remove CR from line endings and strip trailing spaces/tabs
+  sed -i -e 's/\r$//' -e 's/[ \t]*$//' "$ENV_FILE" 2>/dev/null || true
 }
 
 # Replace an env var's value in-place in .env (handles macOS/Linux sed)
@@ -95,6 +101,7 @@ replace_env_value(){
     sed -i -E "s|^\s*${key}\s*=.*$|${key}=${val}|" "$ENV_FILE"
   fi
   log "Updated ${key} in .env"
+  normalize_env_file
 }
 
 # Ensure a secret is present and non-empty.
@@ -107,7 +114,7 @@ ensure_secret_nonempty(){
 
   if [[ "$FRESH_START" == true ]]; then
     if ! grep -qE "^\s*${key}\s*=" "$ENV_FILE" 2>/dev/null; then
-      echo "${key}=${generated}" >>"$ENV_FILE"; log "Initialized ${key} in .env (fresh)";
+      printf '%s\n' "${key}=${generated}" >>"$ENV_FILE"; log "Initialized ${key} in .env (fresh)"; normalize_env_file;
     else
       # If empty (e.g., KEY=, KEY="", KEY='') replace with generated
       if grep -qE "^\s*${key}\s*=\s*(""|''|\s*)$" "$ENV_FILE"; then
@@ -121,8 +128,11 @@ ensure_secret_nonempty(){
 
 ensure_secrets(){
   log "Ensuring required secrets in .env"
-  set_env_if_missing POSTGRES_USER postgres
+  set_env_if_missing POSTGRES_USER ai_agent_user
   set_env_if_missing POSTGRES_DB enhanced_ai_os
+  # Defaults for Compose variable expansion (suppress warnings)
+  set_env_if_missing POSTGRES_HOST postgres
+  set_env_if_missing POSTGRES_PORT 5432
 
   # Core service passwords/secrets must be non-empty on fresh runs
   ensure_secret_nonempty POSTGRES_PASSWORD 32
@@ -142,6 +152,7 @@ ensure_secrets(){
   ensure_secret_nonempty WEBHOOK_SECRET 32
   ensure_secret_nonempty N8N_BASIC_AUTH_PASSWORD 32
   ensure_secret_nonempty DB_PASSWORD 32
+  normalize_env_file
 }
 
 ensure_dirs(){
@@ -333,136 +344,9 @@ summary(){
 }
 
 generate_override(){
-  cat >"$OVERRIDE_FILE" <<EOF
-volumes:
-  postgres_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/postgres
-  postgres_backups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/backups/postgres
-
-  neo4j_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/neo4j/data
-  neo4j_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/neo4j/logs
-  neo4j_import:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/neo4j/import
-  neo4j_plugins:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/neo4j/plugins
-  neo4j_backups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/backups/neo4j
-
-  rabbitmq_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/rabbitmq
-  rabbitmq_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/logs/rabbitmq
-  rabbitmq_backups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/backups/rabbitmq
-
-  n8n_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/n8n
-  n8n_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/logs/n8n
-  n8n_backups:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/backups/n8n
-
-  prometheus_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/prometheus
-
-  grafana_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/grafana
-  grafana_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/logs/grafana
-
-  alertmanager_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/alertmanager
-
-  loki_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/enhanced-ai-agent-os/data/loki
-
-  api-logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/logs/api
-  api-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DEPLOY_TMP_ROOT}/data/api
+  # Using pure named volumes; no overrides needed. Keep a minimal file for compatibility.
+  cat >"$OVERRIDE_FILE" <<'EOF'
+# No docker-compose overrides required; named volumes in base compose are used.
 EOF
 }
 

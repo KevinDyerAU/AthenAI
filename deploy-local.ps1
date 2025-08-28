@@ -58,7 +58,17 @@ function Invoke-Check {
   if (Test-Path $EnvFile) { $envOk = Test-EnvKeys } else { Write-Log ".env not found at $EnvFile" 'ERROR' }
   try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile config | Out-Null; Write-Log "docker-compose config OK" 'SUCCESS' } catch { Write-Log "docker-compose config failed: $($_.Exception.Message)" 'ERROR' }
   Write-Host "`n=== existing containers (if any) ==="; try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile ps } catch {}
-  Write-Host "`n=== health (if running) ==="; @('enhanced-ai-postgres','enhanced-ai-neo4j','enhanced-ai-rabbitmq','enhanced-ai-n8n','enhanced-ai-agent-api') | ForEach-Object { Get-ContainerHealth $_ } | Out-Host
+  Write-Host "`n=== health (if running) ==="; @(
+    'enhanced-ai-postgres',
+    'enhanced-ai-neo4j',
+    'enhanced-ai-rabbitmq',
+    'enhanced-ai-n8n',
+    'enhanced-ai-prometheus',
+    'enhanced-ai-grafana',
+    'enhanced-ai-loki',
+    'enhanced-ai-alertmanager',
+    'enhanced-ai-agent-api'
+  ) | ForEach-Object { Get-ContainerHealth $_ } | Out-Host
   if (-not $envOk) { exit 2 } else { exit 0 }
 }
 
@@ -174,7 +184,7 @@ function Set-Env-IfMissing([string]$key, [string]$value) {
 function Initialize-Secrets {
   Write-Log "Ensuring required secrets in .env"
   # Align API and Postgres credentials
-  Set-Env-IfMissing -key 'POSTGRES_USER' -value 'postgres'
+  Set-Env-IfMissing -key 'POSTGRES_USER' -value 'ai_agent_user'
   Set-Env-IfMissing -key 'POSTGRES_DB' -value 'enhanced_ai_os'
   Set-Env-IfMissing -key 'POSTGRES_PASSWORD' -value (New-SecretString 32)
   # Defaults for Compose variable expansion (suppress warnings)

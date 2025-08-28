@@ -20,29 +20,20 @@ CREATE SCHEMA IF NOT EXISTS consciousness;
 CREATE SCHEMA IF NOT EXISTS monitoring;
 CREATE SCHEMA IF NOT EXISTS audit;
 
--- Create application user with appropriate permissions
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'ai_agent_user') THEN
-        CREATE ROLE ai_agent_user WITH LOGIN PASSWORD 'secure_password_change_me';
-    END IF;
-END
-$$;
-
--- Grant permissions to application user
-GRANT CONNECT ON DATABASE enhanced_ai_os TO ai_agent_user;
-GRANT USAGE ON SCHEMA n8n TO ai_agent_user;
-GRANT USAGE ON SCHEMA ai_agents TO ai_agent_user;
-GRANT USAGE ON SCHEMA consciousness TO ai_agent_user;
-GRANT USAGE ON SCHEMA monitoring TO ai_agent_user;
-GRANT USAGE ON SCHEMA audit TO ai_agent_user;
+-- Grant permissions to the current user (the superuser defined by POSTGRES_USER)
+GRANT CONNECT ON DATABASE enhanced_ai_os TO CURRENT_USER;
+GRANT USAGE ON SCHEMA n8n TO CURRENT_USER;
+GRANT USAGE ON SCHEMA ai_agents TO CURRENT_USER;
+GRANT USAGE ON SCHEMA consciousness TO CURRENT_USER;
+GRANT USAGE ON SCHEMA monitoring TO CURRENT_USER;
+GRANT USAGE ON SCHEMA audit TO CURRENT_USER;
 
 -- Grant table creation permissions
-GRANT CREATE ON SCHEMA n8n TO ai_agent_user;
-GRANT CREATE ON SCHEMA ai_agents TO ai_agent_user;
-GRANT CREATE ON SCHEMA consciousness TO ai_agent_user;
-GRANT CREATE ON SCHEMA monitoring TO ai_agent_user;
-GRANT CREATE ON SCHEMA audit TO ai_agent_user;
+GRANT CREATE ON SCHEMA n8n TO CURRENT_USER;
+GRANT CREATE ON SCHEMA ai_agents TO CURRENT_USER;
+GRANT CREATE ON SCHEMA consciousness TO CURRENT_USER;
+GRANT CREATE ON SCHEMA monitoring TO CURRENT_USER;
+GRANT CREATE ON SCHEMA audit TO CURRENT_USER;
 
 -- Create audit logging function
 CREATE OR REPLACE FUNCTION audit.log_changes()

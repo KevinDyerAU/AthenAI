@@ -3,25 +3,58 @@
 \c enhanced_ai_os;
 
 -- Enable commonly used extensions (idempotent)
-CREATE EXTENSION IF NOT EXISTS plpgsql;           -- Usually installed by default
-CREATE EXTENSION IF NOT EXISTS pgcrypto;          -- gen_random_uuid(), cryptographic functions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";       -- uuid_generate_v4()
-CREATE EXTENSION IF NOT EXISTS hstore;            -- key/value store
-CREATE EXTENSION IF NOT EXISTS ltree;             -- tree-like label paths
-CREATE EXTENSION IF NOT EXISTS pg_trgm;           -- trigram search
-CREATE EXTENSION IF NOT EXISTS btree_gin;         -- btree emulation for GIN
-CREATE EXTENSION IF NOT EXISTS btree_gist;        -- btree emulation for GiST
-CREATE EXTENSION IF NOT EXISTS vector;            -- pgvector for embeddings
+-- plpgsql is usually present; keeping it simple
+CREATE EXTENSION IF NOT EXISTS plpgsql;
+
+-- Helper DO wrapper to ignore missing extensions
+DO $$ BEGIN
+  BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS pgcrypto';
+  EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'pgcrypto extension not found; skipping'; END;
+END $$;
+
+DO $$ BEGIN
+  BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"';
+  EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'uuid-ossp extension not found; skipping'; END;
+END $$;
+
+DO $$ BEGIN
+  BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS hstore';
+  EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'hstore extension not found; skipping'; END;
+END $$;
+
+DO $$ BEGIN
+  BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS ltree';
+  EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'ltree extension not found; skipping'; END;
+END $$;
+
+DO $$ BEGIN
+  BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_trgm';
+  EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'pg_trgm extension not found; skipping'; END;
+END $$;
+
+DO $$ BEGIN
+  BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS btree_gin';
+  EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'btree_gin extension not found; skipping'; END;
+END $$;
+
+DO $$ BEGIN
+  BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS btree_gist';
+  EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'btree_gist extension not found; skipping'; END;
+END $$;
+
+DO $$ BEGIN
+  BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS vector';
+  EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'vector extension not found; skipping'; END;
+END $$;
 
 -- TimescaleDB (optional, requires image with extension preloaded)
 -- Will succeed only if extension is available in the Postgres image
 DO $$
 BEGIN
-    BEGIN
+    IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb') THEN
         EXECUTE 'CREATE EXTENSION IF NOT EXISTS timescaledb';
-    EXCEPTION WHEN undefined_file THEN
-        -- Extension not available in the image; proceed without failing init
-        RAISE NOTICE 'timescaledb extension not found; skipping';
-    END;
+    ELSE
+        RAISE NOTICE 'timescaledb extension not found in pg_available_extensions; skipping';
+    END IF;
 END
 $$;
