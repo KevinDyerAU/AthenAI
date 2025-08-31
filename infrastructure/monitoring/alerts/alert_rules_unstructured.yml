@@ -1,0 +1,215 @@
+# alert_rules_unstructured.yml
+# Prometheus alert rules for Enhanced AI Agent OS v3 - Unstructured.io Integration
+
+groups:
+  - name: unstructured_worker_alerts
+    rules:
+      # Worker Health Alerts
+      - alert: UnstructuredWorkerDown
+        expr: up{job="unstructured-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: unstructured-worker
+        annotations:
+          summary: "Unstructured worker is down"
+          description: "Unstructured worker {{ $labels.instance }} has been down for more than 1 minute."
+
+      - alert: UnstructuredWorkerHighCPU
+        expr: (rate(process_cpu_seconds_total{job="unstructured-worker"}[5m]) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: unstructured-worker
+        annotations:
+          summary: "Unstructured worker high CPU usage"
+          description: "Unstructured worker {{ $labels.instance }} CPU usage is above 80% for more than 5 minutes."
+
+      - alert: UnstructuredWorkerHighMemory
+        expr: (process_resident_memory_bytes{job="unstructured-worker"} / 1024 / 1024 / 1024) > 1.5
+        for: 5m
+        labels:
+          severity: warning
+          service: unstructured-worker
+        annotations:
+          summary: "Unstructured worker high memory usage"
+          description: "Unstructured worker {{ $labels.instance }} memory usage is above 1.5GB for more than 5 minutes."
+
+  - name: document_processing_alerts
+    rules:
+      # Processing Performance Alerts
+      - alert: DocumentProcessingHighLatency
+        expr: histogram_quantile(0.95, rate(document_processing_seconds_bucket[5m])) > 300
+        for: 5m
+        labels:
+          severity: warning
+          service: document-processing
+        annotations:
+          summary: "High document processing latency"
+          description: "95th percentile of document processing time is above 5 minutes for more than 5 minutes."
+
+      - alert: DocumentProcessingHighErrorRate
+        expr: (rate(documents_processed_total{status="error"}[5m]) / rate(documents_processed_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: document-processing
+        annotations:
+          summary: "High document processing error rate"
+          description: "Document processing error rate is above 10% for more than 5 minutes."
+
+      - alert: DocumentProcessingNoActivity
+        expr: rate(documents_processed_total[10m]) == 0
+        for: 10m
+        labels:
+          severity: warning
+          service: document-processing
+        annotations:
+          summary: "No document processing activity"
+          description: "No documents have been processed in the last 10 minutes."
+
+  - name: queue_alerts
+    rules:
+      # Queue Health Alerts
+      - alert: DocumentQueueBacklog
+        expr: queue_size > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: document-queue
+        annotations:
+          summary: "Document processing queue backlog"
+          description: "Document processing queue has more than 100 pending items for more than 5 minutes."
+
+      - alert: DocumentQueueStalled
+        expr: increase(queue_size[10m]) > 0 and rate(documents_processed_total[10m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+          service: document-queue
+        annotations:
+          summary: "Document processing queue stalled"
+          description: "Document queue is growing but no documents are being processed for more than 10 minutes."
+
+  - name: storage_alerts
+    rules:
+      # Neo4j Storage Alerts
+      - alert: Neo4jDocumentStorageDown
+        expr: up{job="neo4j-documents"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: neo4j
+        annotations:
+          summary: "Neo4j document storage is down"
+          description: "Neo4j document storage has been down for more than 1 minute."
+
+      - alert: Neo4jHighDiskUsage
+        expr: (neo4j_store_size_bytes / neo4j_store_total_bytes) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: neo4j
+        annotations:
+          summary: "Neo4j high disk usage"
+          description: "Neo4j disk usage is above 85% for more than 5 minutes."
+
+      # File Storage Alerts
+      - alert: DocumentStorageHighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/app/data"} / node_filesystem_size_bytes{mountpoint="/app/data"})) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: file-storage
+        annotations:
+          summary: "Document storage high disk usage"
+          description: "Document storage disk usage is above 85% for more than 5 minutes."
+
+  - name: api_alerts
+    rules:
+      # API Health Alerts
+      - alert: DocumentAPIDown
+        expr: up{job="document-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: document-api
+        annotations:
+          summary: "Document API is down"
+          description: "Document API has been down for more than 1 minute."
+
+      - alert: DocumentAPIHighLatency
+        expr: histogram_quantile(0.95, rate(flask_request_duration_seconds_bucket{job="document-api"}[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: document-api
+        annotations:
+          summary: "Document API high latency"
+          description: "95th percentile of Document API response time is above 5 seconds for more than 5 minutes."
+
+      - alert: DocumentAPIHighErrorRate
+        expr: (rate(flask_request_exceptions_total{job="document-api"}[5m]) / rate(flask_request_total{job="document-api"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: document-api
+        annotations:
+          summary: "Document API high error rate"
+          description: "Document API error rate is above 5% for more than 5 minutes."
+
+  - name: integration_alerts
+    rules:
+      # Integration Health Alerts
+      - alert: RabbitMQConnectionLost
+        expr: rabbitmq_connections{job="rabbitmq-unstructured"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: rabbitmq
+        annotations:
+          summary: "RabbitMQ connection lost"
+          description: "No active connections to RabbitMQ for document processing."
+
+      - alert: OpenAIAPIFailure
+        expr: increase(openai_api_errors_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: openai-api
+        annotations:
+          summary: "OpenAI API failures"
+          description: "More than 10 OpenAI API failures in the last 5 minutes."
+
+      - alert: EmbeddingGenerationFailure
+        expr: (rate(embedding_generation_errors_total[5m]) / rate(embedding_generation_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: embedding-generation
+        annotations:
+          summary: "High embedding generation failure rate"
+          description: "Embedding generation failure rate is above 10% for more than 5 minutes."
+
+  - name: quality_alerts
+    rules:
+      # Document Quality Alerts
+      - alert: LowDocumentProcessingQuality
+        expr: avg(document_confidence_score) < 0.7
+        for: 10m
+        labels:
+          severity: warning
+          service: document-processing
+        annotations:
+          summary: "Low document processing quality"
+          description: "Average document processing confidence score is below 0.7 for more than 10 minutes."
+
+      - alert: HighOCRFailureRate
+        expr: (rate(ocr_failures_total[5m]) / rate(ocr_attempts_total[5m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          service: ocr-processing
+        annotations:
+          summary: "High OCR failure rate"
+          description: "OCR failure rate is above 20% for more than 5 minutes."

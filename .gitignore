@@ -9,3 +9,6 @@ deploy_tmp/
 # Deployment logs
 deployment.local.log
 cloud-deployment.log
+deploy_tmp/
+.env
+deployment.local.log

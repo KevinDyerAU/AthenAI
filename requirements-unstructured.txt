@@ -1,0 +1,62 @@
+# requirements-unstructured.txt
+# Enhanced AI Agent OS v3 - Unstructured.io Worker Dependencies
+
+# Core unstructured.io with targeted document type support
+unstructured[pdf,docx,pptx,xlsx,html,xml,md,json,png,jpg]>=0.12.0
+
+# Message queue communication
+pika>=1.3.0
+
+# Database connectivity
+neo4j>=5.0.0
+psycopg2-binary>=2.9.0
+
+# HTTP client for API communication
+requests>=2.31.0
+httpx>=0.25.0
+
+# JSON handling and serialization
+orjson>=3.9.0
+
+# Logging and monitoring
+structlog>=23.1.0
+prometheus-client>=0.17.0
+
+# Configuration management
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Async support
+aiofiles>=23.0.0
+
+# Error handling and retries
+tenacity>=8.2.0
+
+# File type detection and validation
+python-magic>=0.4.27
+filetype>=1.2.0
+
+# Text processing and embeddings
+openai>=1.0.0
+tiktoken>=0.5.0
+
+# Date and time handling
+python-dateutil>=2.8.0
+
+# Environment variable management
+python-dotenv>=1.0.0
+
+# Health check endpoint
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# Metrics and monitoring
+psutil>=5.9.0
+
+# Security
+cryptography>=41.0.0
+
+# Testing (for development)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0

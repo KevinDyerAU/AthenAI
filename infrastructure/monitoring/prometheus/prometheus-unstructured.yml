@@ -1,0 +1,95 @@
+# prometheus-unstructured.yml
+# Prometheus configuration for Enhanced AI Agent OS v3 - Unstructured.io Integration
+# Extends the main Prometheus configuration with document processing metrics
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'neov3-unstructured-monitor'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  - "alert_rules_unstructured.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Unstructured Worker Metrics
+  - job_name: 'unstructured-worker'
+    static_configs:
+      - targets: ['unstructured-worker:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    honor_labels: true
+    params:
+      format: ['prometheus']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: unstructured-worker:8080
+
+  # Document Processing API Metrics
+  - job_name: 'document-api'
+    static_configs:
+      - targets: ['neov3-api:8000']
+    metrics_path: '/api/v1/documents/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    honor_labels: true
+
+  # RabbitMQ Metrics (for document queues)
+  - job_name: 'rabbitmq-unstructured'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Neo4j Metrics (document storage)
+  - job_name: 'neo4j-documents'
+    static_configs:
+      - targets: ['neo4j:2004']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Redis Metrics (document caching)
+  - job_name: 'redis-unstructured'
+    static_configs:
+      - targets: ['redis-unstructured:6379']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    params:
+      format: ['prometheus']
+
+  # Container Metrics
+  - job_name: 'cadvisor-unstructured'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Health Check Endpoints
+  - job_name: 'health-checks'
+    static_configs:
+      - targets: 
+        - 'unstructured-worker:8080'
+        - 'neov3-api:8000'
+    metrics_path: '/health'
+    scrape_interval: 30s
+    scrape_timeout: 5s
+    params:
+      format: ['prometheus']

@@ -1,0 +1,161 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "NeoV3 - Document Processing (Unstructured.io)",
+    "tags": ["neov3", "document-processing", "unstructured"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": { "from": "now-1h", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Document Processing Overview",
+        "type": "stat",
+        "targets": [
+          { "expr": "sum(documents_processed_total)", "legendFormat": "Total Processed", "refId": "A" },
+          { "expr": "sum(rate(documents_processed_total[5m])) * 60", "legendFormat": "Processing Rate (per min)", "refId": "B" },
+          { "expr": "queue_size", "legendFormat": "Queue Size", "refId": "C" },
+          { "expr": "active_workers", "legendFormat": "Active Workers", "refId": "D" }
+        ],
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+        "options": {
+          "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+          "orientation": "horizontal", "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto"
+        },
+        "fieldConfig": { "defaults": { "mappings": [], "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 80 } ] } } }
+      },
+      {
+        "id": 2,
+        "title": "Processing Rate by File Type",
+        "type": "timeseries",
+        "targets": [ { "expr": "sum by (file_type) (rate(documents_processed_total{status=\"success\"}[5m]))", "legendFormat": "{{file_type}}", "refId": "A" } ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+        "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "linear", "barAlignment": 0, "lineWidth": 1, "fillOpacity": 10, "gradientMode": "none", "spanNulls": false, "insertNulls": false, "showPoints": "never", "pointSize": 5, "stacking": { "mode": "none", "group": "A" }, "axisPlacement": "auto", "axisLabel": "", "scaleDistribution": { "type": "linear" }, "hideFrom": { "legend": false, "tooltip": false, "vis": false }, "thresholdsStyle": { "mode": "off" } }, "color": { "mode": "palette-classic" }, "unit": "reqps" } }
+      },
+      {
+        "id": 3,
+        "title": "Error Rate",
+        "type": "timeseries",
+        "targets": [ { "expr": "sum(rate(documents_processed_total{status=\"error\"}[5m])) / sum(rate(documents_processed_total[5m]))", "legendFormat": "Error Rate", "refId": "A" } ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+        "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "linear", "barAlignment": 0, "lineWidth": 1, "fillOpacity": 10, "gradientMode": "none", "spanNulls": false, "insertNulls": false, "showPoints": "never", "pointSize": 5, "stacking": { "mode": "none", "group": "A" }, "axisPlacement": "auto", "axisLabel": "", "scaleDistribution": { "type": "linear" }, "hideFrom": { "legend": false, "tooltip": false, "vis": false }, "thresholdsStyle": { "mode": "off" } }, "color": { "mode": "palette-classic" }, "unit": "percentunit", "max": 1, "min": 0 } }
+      },
+      {
+        "id": 4,
+        "title": "Processing Time Distribution",
+        "type": "heatmap",
+        "targets": [ { "expr": "sum(rate(document_processing_seconds_bucket[5m])) by (le)", "legendFormat": "{{le}}", "refId": "A" } ],
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+        "options": { "calculate": false, "calculation": {}, "cellGap": 2, "cellValues": {}, "color": { "exponent": 0.5, "fill": "dark-orange", "mode": "spectrum", "reverse": false, "scale": "exponential", "scheme": "Oranges", "steps": 64 }, "exemplars": { "color": "rgba(255,0,255,0.7)" }, "filterValues": { "le": 1e-9 }, "legend": { "show": false }, "rowsFrame": { "layout": "auto" }, "tooltip": { "show": true, "yHistogram": false }, "yAxis": { "axisPlacement": "left", "reverse": false, "unit": "s" } }
+      },
+      {
+        "id": 5,
+        "title": "Worker Resource Usage",
+        "type": "timeseries",
+        "targets": [ { "expr": "rate(process_cpu_seconds_total{job=\"unstructured-worker\"}[5m]) * 100", "legendFormat": "CPU Usage %", "refId": "A" }, { "expr": "process_resident_memory_bytes{job=\"unstructured-worker\"} / 1024 / 1024 / 1024", "legendFormat": "Memory Usage (GB)", "refId": "B" } ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+        "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+        "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "linear", "barAlignment": 0, "lineWidth": 1, "fillOpacity": 10, "gradientMode": "none", "spanNulls": false, "insertNulls": false, "showPoints": "never", "pointSize": 5, "stacking": { "mode": "none", "group": "A" }, "axisPlacement": "auto", "axisLabel": "", "scaleDistribution": { "type": "linear" }, "hideFrom": { "legend": false, "tooltip": false, "vis": false }, "thresholdsStyle": { "mode": "off" } }, "color": { "mode": "palette-classic" } } }
+      },
+      {
+        "id": 6,
+        "title": "Queue Metrics",
+        "type": "timeseries",
+        "targets": [ { "expr": "queue_size", "legendFormat": "Queue Size", "refId": "A" }, { "expr": "sum(rate(documents_processed_total[5m])) * 60", "legendFormat": "Processing Rate (per min)", "refId": "B" } ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+        "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+        "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "linear", "barAlignment": 0, "lineWidth": 1, "fillOpacity": 10, "gradientMode": "none", "spanNulls": false, "insertNulls": false, "showPoints": "never", "pointSize": 5, "stacking": { "mode": "none", "group": "A" }, "axisPlacement": "auto", "axisLabel": "", "scaleDistribution": { "type": "linear" }, "hideFrom": { "legend": false, "tooltip": false, "vis": false }, "thresholdsStyle": { "mode": "off" } }, "color": { "mode": "palette-classic" } } }
+      },
+      {
+        "id": 7,
+        "title": "Document Quality Metrics",
+        "type": "stat",
+        "targets": [ { "expr": "avg(document_confidence_score)", "legendFormat": "Avg Confidence", "refId": "A" }, { "expr": "avg(ocr_confidence)", "legendFormat": "Avg OCR Confidence", "refId": "B" }, { "expr": "sum(rate(ocr_failures_total[5m])) / sum(rate(ocr_attempts_total[5m]))", "legendFormat": "OCR Failure Rate", "refId": "C" } ],
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+        "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" }, "orientation": "horizontal", "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto" },
+        "fieldConfig": { "defaults": { "mappings": [], "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "green", "value": 0.8 } ] }, "unit": "percentunit", "max": 1, "min": 0 } }
+      },
+      {
+        "id": 8,
+        "title": "Storage Metrics",
+        "type": "timeseries",
+        "targets": [ { "expr": "sum(document_storage_bytes) / 1024 / 1024 / 1024", "legendFormat": "Total Storage (GB)", "refId": "A" }, { "expr": "sum(document_count)", "legendFormat": "Total Documents", "refId": "B" }, { "expr": "sum(chunk_count)", "legendFormat": "Total Chunks", "refId": "C" } ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+        "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+        "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "linear", "barAlignment": 0, "lineWidth": 1, "fillOpacity": 10, "gradientMode": "none", "spanNulls": false, "insertNulls": false, "showPoints": "never", "pointSize": 5, "stacking": { "mode": "none", "group": "A" }, "axisPlacement": "auto", "axisLabel": "", "scaleDistribution": { "type": "linear" }, "hideFrom": { "legend": false, "tooltip": false, "vis": false }, "thresholdsStyle": { "mode": "off" } }, "color": { "mode": "palette-classic" } } }
+      },
+      {
+        "id": 9,
+        "title": "API Performance",
+        "type": "timeseries",
+        "targets": [ { "expr": "histogram_quantile(0.50, sum(rate(flask_request_duration_seconds_bucket{job=\"document-api\"}[5m])) by (le))", "legendFormat": "50th percentile", "refId": "A" }, { "expr": "histogram_quantile(0.95, sum(rate(flask_request_duration_seconds_bucket{job=\"document-api\"}[5m])) by (le))", "legendFormat": "95th percentile", "refId": "B" }, { "expr": "histogram_quantile(0.99, sum(rate(flask_request_duration_seconds_bucket{job=\"document-api\"}[5m])) by (le))", "legendFormat": "99th percentile", "refId": "C" } ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+        "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+        "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "linear", "barAlignment": 0, "lineWidth": 1, "fillOpacity": 10, "gradientMode": "none", "spanNulls": false, "insertNulls": false, "showPoints": "never", "pointSize": 5, "stacking": { "mode": "none", "group": "A" }, "axisPlacement": "auto", "axisLabel": "", "scaleDistribution": { "type": "linear" }, "hideFrom": { "legend": false, "tooltip": false, "vis": false }, "thresholdsStyle": { "mode": "off" } }, "color": { "mode": "palette-classic" }, "unit": "s" } }
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "current": { "selected": false, "text": "All", "value": "$__all" },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "definition": "label_values(documents_processed_total, file_type)",
+          "hide": 0,
+          "includeAll": true,
+          "label": "File Type",
+          "multi": true,
+          "name": "file_type",
+          "options": [],
+          "query": { "query": "label_values(documents_processed_total, file_type)", "refId": "StandardVariableQuery" },
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "sort": 0,
+          "type": "query"
+        },
+        {
+          "current": { "selected": false, "text": "All", "value": "$__all" },
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "definition": "label_values(up{job=\"unstructured-worker\"}, instance)",
+          "hide": 0,
+          "includeAll": true,
+          "label": "Worker Instance",
+          "multi": true,
+          "name": "worker_instance",
+          "options": [],
+          "query": { "query": "label_values(up{job=\"unstructured-worker\"}, instance)", "refId": "StandardVariableQuery" },
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "sort": 0,
+          "type": "query"
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "builtIn": 1,
+          "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "type": "dashboard"
+        }
+      ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "links": [],
+    "liveNow": false,
+    
+    "schemaVersion": 37,
+    "version": 0,
+    "weekStart": ""
+  }
+}

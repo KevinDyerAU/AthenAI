@@ -14,6 +14,7 @@ from .resources.conversations import ns as conversations_ns
 from .resources.kg_admin import ns as kg_admin_ns
 from .resources.kg_consensus import ns as kg_consensus_ns
 from .resources.integrations import ns as integrations_ns
+from .resources.documents import ns as documents_ns
 from .resources.substrate import ns as substrate_ns
 from .resources.autonomy import ns as autonomy_ns
 from .resources.kg_drift import ns as kg_drift_ns
@@ -87,6 +88,7 @@ def create_app() -> Flask:
     restx_api.add_namespace(coordination.ns, path="/api/coordination")
     restx_api.add_namespace(validation.ns, path="/api/validation")
     restx_api.add_namespace(security_resources.ns, path="/api/security")
+    restx_api.add_namespace(documents_ns)
 
     # Socket.IO
     register_socketio_events(socketio)
@@ -94,6 +96,29 @@ def create_app() -> Flask:
 
     # Error handlers
     register_error_handlers(app)
+
+    # ReDoc documentation at /redoc (served via CDN, spec at /api/swagger.json)
+    @app.route("/redoc")
+    def redoc():
+        return (
+            """
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset=\"utf-8\"/>
+              <title>NeoV3 API – ReDoc</title>
+              <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>
+              <style> body { margin: 0; padding: 0; } </style>
+            </head>
+            <body>
+              <redoc spec-url='/api/swagger.json'></redoc>
+              <script src="https://cdn.jsdelivr.net/npm/redoc/bundles/redoc.standalone.js"></script>
+            </body>
+            </html>
+            """,
+            200,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
 
     # DB create (dev only) and attach SQLAlchemy metrics listeners
     with app.app_context():

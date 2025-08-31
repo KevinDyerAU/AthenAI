@@ -1,0 +1,42 @@
+# Dockerfile.unstructured
+# Enhanced AI Agent OS v3 - Unstructured.io Document Processing Worker
+# Based on official unstructured.io image with NeoV3 integration
+
+# Use the official unstructured.io image as base
+FROM downloads.unstructured.io/unstructured-io/unstructured:latest
+
+# Set working directory
+WORKDIR /app
+
+## Base image does not include apt-get; skip OS package installs and use what's provided
+
+# Copy requirements file
+COPY requirements-unstructured.txt /app/requirements-unstructured.txt
+
+# Install Python dependencies for NeoV3 integration
+RUN pip install --no-cache-dir -r requirements-unstructured.txt
+
+# Copy application code
+COPY src/unstructured_worker/ /app/
+COPY src/shared/ /app/shared/
+
+# Create necessary directories
+RUN mkdir -p /app/data/input /app/data/output /app/data/temp /app/logs
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV WORKER_TYPE=unstructured
+ENV LOG_LEVEL=INFO
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8080/health')" || exit 1
+
+# Run as default user provided by base image (root or configured by base)
+
+# Expose port for health checks and metrics
+EXPOSE 8080
+
+# Default command
+CMD ["python", "worker.py"]

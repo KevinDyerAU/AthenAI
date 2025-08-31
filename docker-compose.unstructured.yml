@@ -1,0 +1,51 @@
+# docker-compose.unstructured.yml
+# Overlay for Unstructured.io Worker in NeoV3
+
+services:
+  unstructured-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.unstructured
+    container_name: neov3-unstructured-worker
+    restart: unless-stopped
+    environment:
+      # Connections
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-ai_agent_queue_user}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-ai_agent_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-enhanced_ai_os}
+      # OpenAI / Embeddings
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+      # Worker settings
+      UNSTRUCTURED_QUEUE: ${UNSTRUCTURED_QUEUE:-documents.process}
+      WORKER_ID: unstructured-worker-1
+      WORKER_CONCURRENCY: 2
+      MAX_FILE_SIZE: 100MB
+      TEMP_DIR: /app/data/temp
+      LOG_LEVEL: INFO
+      # Monitoring
+      PROMETHEUS_PORT: 8080
+      HEALTH_CHECK_PORT: 8080
+      # Processing config
+      DEFAULT_STRATEGY: fast
+      ENABLE_OCR: "true"
+      ENABLE_TABLES: "true"
+      CHUNK_SIZE: 1000
+      CHUNK_OVERLAP: 200
+    volumes:
+      - ./data/unstructured:/app/data
+      - ./logs/unstructured:/app/logs
+    depends_on:
+      - rabbitmq
+      - neo4j
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - enhanced-ai-network
