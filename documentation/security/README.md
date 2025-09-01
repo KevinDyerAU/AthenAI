@@ -16,12 +16,32 @@ This document outlines the security framework for Enhanced AI Agent OS, covering
 - NGINX security policies (`infrastructure/security/nginx/security.conf`): CORS, rate limiting, headers.
 - Input validation at service layer. Enforce size/time limits.
 - Enable WAF where appropriate.
- - Security endpoints (JWT + RBAC protected):
-   - `GET /api/security/compliance/assess` — runs compliance checks and persists a report when enabled.
-   - `GET /api/security/incidents?kind=&severity=&limit=` — list recorded security incidents.
-   - `POST /api/security/incidents` — record a new incident `{kind, severity, message, context}`.
-   - `GET /api/security/sandbox/policy` — view current sandbox policy (env-driven).
-   - `POST /api/security/sandbox/evaluate` — evaluate sandbox policy for a `risk_score` (0..1).
+- Security endpoints (JWT + RBAC protected):
+  - `GET /api/security/compliance/assess` — runs compliance checks and persists a report when enabled.
+  - `GET /api/security/incidents?kind=&severity=&limit=` — list recorded security incidents.
+  - `POST /api/security/incidents` — record a new incident `{kind, severity, message, context}`.
+  - `GET /api/security/sandbox/policy` — view current sandbox policy (env-driven).
+  - `POST /api/security/sandbox/evaluate` — evaluate sandbox policy for a `risk_score` (0..1).
+
+### Auth headers and flows
+
+Required headers for protected endpoints:
+
+- `Authorization: Bearer <access_token>`
+- `Content-Type: application/json` (for JSON bodies)
+
+Token lifecycle (local `AUTH_PROVIDER=local`):
+
+1. Client obtains token via login endpoint (if exposed) or via IdP when `AUTH_PROVIDER=oidc`.
+2. Sends token in `Authorization` header.
+3. Refreshes token before expiry using refresh endpoint/flow.
+
+Example request:
+
+```bash
+curl -fsS http://localhost:8000/api/system/status \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
 
 ## Data Protection
 - Encryption in transit: TLS for all endpoints and internal comms where possible.

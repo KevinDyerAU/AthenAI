@@ -89,6 +89,17 @@ class Incidents(Resource):
         return it, 201
 
 
+@ns.route("/incidents/<string:incident_id>")
+class IncidentItem(Resource):
+    @jwt_required()
+    @require_permission("security", "read")
+    @ns.marshal_with(incident_model)
+    def get(self, incident_id: str):
+        item = incident_svc.get_by_id(incident_id)
+        if not item:
+            ns.abort(404, "Incident not found")
+        return item
+
 @ns.route("/sandbox/policy")
 class SandboxPolicy(Resource):
     @jwt_required()

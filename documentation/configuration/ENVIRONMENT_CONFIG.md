@@ -22,6 +22,48 @@ Precedence (highest wins) generally follows: process env vars > `.env.<environme
 
 Security: `.gitignore` is configured to ignore `.env` and `.env.*` but keep `*.example` templates tracked.
 
+## Environment Variables Matrix
+
+| Name | Default | Required | Scope | Description | Example |
+|---|---|---|---|---|---|
+| HOST | 0.0.0.0 | no | API | Bind address for Flask/Socket.IO | 0.0.0.0 |
+| PORT | 8000 | no | API | API listen port | 8000 |
+| FLASK_ENV | production | no | API | Flask environment | development |
+| SECRET_KEY | — | yes (prod) | API | Flask secret key | random 32+ chars |
+| CORS_ORIGINS | * (dev) | no | API | Allowed origins for CORS | http://localhost:3000 |
+| DATABASE_URL | — | yes | API | Postgres URL (SQLAlchemy) | postgresql+psycopg2://user:pass@postgres:5432/db |
+| POSTGRES_USER | postgres | no | Postgres | Container user | ai_agent_user |
+| POSTGRES_PASSWORD | — | yes | Postgres | Container password | secret |
+| POSTGRES_DB | postgres | no | Postgres | Database name | enhanced_ai_os |
+| NEO4J_URI | bolt://neo4j:7687 | no | API/Workers | Neo4j bolt URL | bolt://neo4j:7687 |
+| NEO4J_USER | neo4j | no | API/Workers | Neo4j user | neo4j |
+| NEO4J_PASSWORD | — | yes | API/Workers | Neo4j password | changeme |
+| RABBITMQ_DEFAULT_USER | ai_agent_queue_user | no | RabbitMQ | Default RMQ user to provision/use | ai_agent_queue_user |
+| RABBITMQ_DEFAULT_PASS | — | yes | RabbitMQ | Default RMQ user password | strongpass |
+| RABBITMQ_URL | derived | yes | API/Workers | AMQP URL used by clients | amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/ |
+| UNSTRUCTURED_QUEUE | documents.process | no | Worker/API | Queue name for document processing | documents.process |
+| OPENAI_API_KEY | — | yes if embeddings | Worker/API | API key for OpenAI | sk-... |
+| OPENAI_API_BASE | https://api.openai.com/v1 | no | Worker/API | Override OpenAI base URL | custom endpoint |
+| AUTONOMY_ENABLED | true | no | API | Enable autonomy services | true |
+| AUTONOMY_API_EXPOSE | true | no | API | Expose `/api/autonomy/*` | true |
+| AUTONOMY_DEFAULT_MONITOR_INTERVAL | 60 | no | API | Monitor interval seconds | 60 |
+| AUTONOMY_SAFETY_MODE | guarded | no | API | conservative|balanced|aggressive|guarded | guarded |
+| DRIFT_SCAN_INTERVAL | 300 | no | API | Drift scan interval seconds | 300 |
+| HEALING_POLICY | conservative | no | API | Self-healing policy | conservative |
+| ENABLE_PROMETHEUS | true | no | Infra | Enable Prometheus scraping | true |
+| OTEL_EXPORTER_OTLP_ENDPOINT | http://otel-collector:4317 | no | API/Workers | OTLP endpoint | http://otel-collector:4317 |
+| OTEL_SERVICE_NAME | service name | no | API/Workers | Telemetry service name | enhanced-ai-agent-api |
+| GRAFANA_URL | http://grafana:3000 | no | Infra | Grafana base URL | http://grafana:3000 |
+| ALERTMANAGER_URL | http://alertmanager:9093 | no | Infra | Alertmanager base URL | http://alertmanager:9093 |
+| N8N_BASE_URL | http://n8n:5678 | no | n8n | n8n base URL | http://n8n:5678 |
+| N8N_API_KEY | — | if used | n8n | API key for n8n | xxx |
+| N8N_WEBHOOK_SECRET | — | if used | n8n | Webhook verification secret | yyy |
+
+Notes:
+- `RABBITMQ_URL` is consistently constructed from `RABBITMQ_DEFAULT_USER`/`RABBITMQ_DEFAULT_PASS` and host `rabbitmq:5672` in compose.
+- Prometheus UI is mapped to host port 9464 by default (`9464->9090`).
+- Health endpoint retains a back-compat route at `/system/health` (no `/api` prefix).
+
 ## Core Settings
 - APP_NAME: Service name.
 - APP_ENV: development | staging | production.

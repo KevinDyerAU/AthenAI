@@ -235,6 +235,53 @@ class KnowledgeRelationDelete(Resource):
             ns.abort(400, f"Relation delete failed: {e}")
 
 
+@ns.route("/relations/<string:rid>")
+class KnowledgeRelationItem(Resource):
+    @jwt_required()
+    def get(self, rid: str):
+        # rid format: subject_id|predicate|object_id (URL-safe)
+        try:
+            parts = rid.split("|")
+            if len(parts) != 3:
+                ns.abort(400, "rid must be subject_id|predicate|object_id")
+            sid, pred, oid = parts[0], parts[1], parts[2]
+            cypher = (
+                "MATCH (s:Entity {id: $sid})-[r:RELATED {type: $pred}]->(o:Entity {id: $oid}) RETURN r LIMIT 1"
+            )
+            rows = get_client().run_query(cypher, {"sid": sid, "oid": oid, "pred": pred})
+            if not rows:
+                ns.abort(404, "Relation not found")
+            r = rows[0][0]
+            user = get_jwt_identity()
+            audit_event("knowledge.relation.get", {"subject": sid, "predicate": pred, "object": oid}, user)
+            return {"relation": r}, 200
+        except Exception as e:
+            ns.abort(400, f"Relation fetch failed: {e}")
+
+    @jwt_required()
+    def delete(self, rid: str):
+        try:
+            parts = rid.split("|")
+            if len(parts) != 3:
+                ns.abort(400, "rid must be subject_id|predicate|object_id")
+            sid, pred, oid = parts[0], parts[1], parts[2]
+            user = get_jwt_identity()
+            uid = user["id"] if isinstance(user, dict) else user
+            cypher = (
+                "MATCH (s:Entity {id: $sid})-[r:RELATED {type: $pred}]->(o:Entity {id: $oid}) "
+                "WITH r, $uid AS uid, timestamp() AS now "
+                "SET r.state = 'inactive', r.lastUpdated = now, r.updatedBy = uid, r.version = coalesce(r.version,0)+1 "
+                "SET r.provenance = coalesce(r.provenance, []) + [{by: uid, at: now, source: 'api', action: 'deactivate'}] "
+                "RETURN r"
+            )
+            rows = get_client().run_query(cypher, {"sid": sid, "oid": oid, "pred": pred, "uid": str(uid)})
+            if not rows:
+                ns.abort(404, "Relation not found")
+            audit_event("knowledge.relation.delete", {"subject": sid, "predicate": pred, "object": oid}, user)
+            return {"message": "Relation deactivated"}, 200
+        except Exception as e:
+            ns.abort(400, f"Relation delete failed: {e}")
+
 @ns.route("/provenance")
 class KnowledgeProvenance(Resource):
     @jwt_required()

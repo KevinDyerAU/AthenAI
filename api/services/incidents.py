@@ -56,3 +56,23 @@ class IncidentService:
             return out
         except Exception:
             return []
+
+    def get_by_id(self, incident_id: str) -> Optional[Dict[str, Any]]:
+        if os.getenv("INCIDENT_PERSIST_DISABLED", "false").lower() == "true":
+            return None
+        try:
+            q = "MATCH (i:SecurityIncident {id:$id}) RETURN i LIMIT 1"
+            rows = get_client().run_query(q, {"id": incident_id})
+            if not rows:
+                return None
+            i = rows[0].get("i", {})
+            return {
+                "id": i.get("id"),
+                "kind": i.get("kind"),
+                "severity": i.get("severity"),
+                "message": i.get("message"),
+                "context": i.get("context"),
+                "at": i.get("at"),
+            }
+        except Exception:
+            return None
