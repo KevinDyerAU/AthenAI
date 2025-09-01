@@ -9,17 +9,30 @@ Tip: Open Swagger UI at `/api/docs` and ReDoc at `/redoc`.
   - Body: `{ doc_id, file_name | file_path, content_type = pdf|text, metadata }`
   - 202 Accepted, enqueues to `UNSTRUCTURED_QUEUE` (default `documents.process`).
   - Auth: optional.
+  - Note: `content_type` is optional; the Unstructured worker auto-detects from `file_path` extension. Supported examples include: `pdf, docx, pptx, xlsx, html, xml, md, json, png, jpg, jpeg, text` (see `requirements-unstructured.txt`).
   - Example:
 ```bash
 curl -fsS -X POST http://localhost:8000/api/documents/enqueue \
   -H 'Content-Type: application/json' \
   -d '{"doc_id":"doc-n8n-guide","file_name":"The Ultimate n8n Guide.pdf","content_type":"pdf","metadata":{"source":"api"}}'
 ```
+  - Example (DOCX via file_name, omit content_type to auto-detect):
+```bash
+curl -fsS -X POST http://localhost:8000/api/documents/enqueue \
+  -H 'Content-Type: application/json' \
+  -d '{"doc_id":"doc-team-handbook","file_name":"Handbook.docx","metadata":{"source":"api"}}'
+```
+  - Example (JPEG via file_path, omit content_type to auto-detect):
+```bash
+curl -fsS -X POST http://localhost:8000/api/documents/enqueue \
+  -H 'Content-Type: application/json' \
+  -d '{"doc_id":"img-receipt-001","file_path":"/app/data/input/receipt.jpg","metadata":{"category":"expense"}}'
+```
   - Request schema (from `api/resources/documents.py`):
     - `doc_id: string (required)`
     - `file_name: string` (under `data/unstructured/input`)
     - `file_path: string` (absolute worker path)
-    - `content_type: enum[pdf,text]` (default `pdf`)
+    - `content_type: enum[pdf,docx,pptx,xlsx,html,xml,md,json,png,jpg,jpeg,text]` (optional; typically omitted)
     - `metadata: object`
   - Response schema:
     - `{ enqueued: bool, queue: string, doc_id: string, file_path: string }`

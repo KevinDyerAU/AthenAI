@@ -10,7 +10,10 @@ enqueue_model = ns.model("DocumentEnqueue", {
     "doc_id": fields.String(required=True, description="Unique document id"),
     "file_name": fields.String(required=False, description="File name under data/unstructured/input, e.g. The Ultimate n8n Guide.pdf"),
     "file_path": fields.String(required=False, description="Absolute path as seen by worker, e.g. /app/data/input/file.pdf"),
-    "content_type": fields.String(required=False, enum=["pdf", "text"], default="pdf"),
+    # Optional hint; worker auto-detects from file extension. Supported examples align with unstructured extras in requirements-unstructured.txt
+    "content_type": fields.String(required=False, enum=[
+        "pdf", "docx", "pptx", "xlsx", "html", "xml", "md", "json", "png", "jpg", "jpeg", "text"
+    ], description="Optional. If omitted, worker infers from file_path extension."),
     "metadata": fields.Raw(required=False, description="Additional metadata to persist on the document node"),
 })
 
