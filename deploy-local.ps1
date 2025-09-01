@@ -10,12 +10,15 @@ param(
   [switch]$Reuse,
   [switch]$Status,
   [switch]$Check,
+  [switch]$Unstructured,
+  [switch]$NoUnstructured,
   [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 $Script:Root = Join-Path (Get-Location) "."
 $ComposeFile = Join-Path $Script:Root "docker-compose.yml"
+$UnstructuredComposeFile = Join-Path $Script:Root "docker-compose.unstructured.yml"
 $EnvFile     = Join-Path $Script:Root ".env"
 $EnvExamples = @((Join-Path $Script:Root ".env.example"), (Join-Path $Script:Root "unified.env.example"))
 $LogFile     = Join-Path $Script:Root "deployment.local.log"
@@ -47,6 +50,9 @@ function Test-EnvKeys {
     Write-Log ("Missing required keys in .env: {0}" -f ($missing -join ', ')) 'ERROR'
     return $false
   }
+  if ($UseUnstructured) {
+    if (-not ($text -match "(?m)^\s*UNSTRUCTURED_QUEUE\s*=\S+")) { Write-Log "UNSTRUCTURED_QUEUE not set; default will be used (documents.process)" 'WARN' }
+  }
   Write-Log "All required .env keys present" 'SUCCESS'
   return $true
 }
@@ -56,8 +62,22 @@ function Invoke-Check {
   Test-RequiredTools
   $envOk = $false
   if (Test-Path $EnvFile) { $envOk = Test-EnvKeys } else { Write-Log ".env not found at $EnvFile" 'ERROR' }
-  try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile config | Out-Null; Write-Log "docker-compose config OK" 'SUCCESS' } catch { Write-Log "docker-compose config failed: $($_.Exception.Message)" 'ERROR' }
-  Write-Host "`n=== existing containers (if any) ==="; try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile ps } catch {}
+  try {
+    if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile config | Out-Null
+    } else {
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile config | Out-Null
+    }
+    Write-Log "docker-compose config OK" 'SUCCESS'
+  } catch { Write-Log "docker-compose config failed: $($_.Exception.Message)" 'ERROR' }
+  Write-Host "`n=== existing containers (if any) ===";
+  try {
+    if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile ps
+    } else {
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile ps
+    }
+  } catch {}
   Write-Host "`n=== health (if running) ==="; @(
     'enhanced-ai-postgres',
     'enhanced-ai-neo4j',
@@ -106,13 +126,15 @@ function Show-Usage {
   @"
 NeoV3 Local Deployment (PowerShell)
 
-Usage: .\deploy-local.ps1 [-Fresh] [-Reuse] [-Status] [-Check] [-Help]
+Usage: .\deploy-local.ps1 [-Fresh] [-Reuse] [-Status] [-Check] [-Unstructured] [-NoUnstructured] [-Help]
 
 Options:
   -Fresh   FULL RESET: down -v, clear deploy_tmp/, recreate .env and secrets
   -Reuse   Reuse existing containers (no recreate), skip pulls
   -Status  Print docker compose ps and per-container health and exit
   -Check   Validate tools, .env keys, and compose config (no changes)
+  -Unstructured Include Unstructured worker overlay (default)
+  -NoUnstructured Opt out of Unstructured worker (default is ON)
   -Help    Show this help and exit
 
 Phases:
@@ -131,6 +153,11 @@ $SkipPull = $false
 $DockerUpArgs = ""
 if ($Reuse) { $SkipPull = $true; $DockerUpArgs = "--no-recreate" }
 if ($Fresh) { $SkipPull = $false; $DockerUpArgs = "--force-recreate --build" }
+
+# Unstructured default: ON unless explicitly opted out
+$UseUnstructured = $true
+if ($NoUnstructured) { $UseUnstructured = $false }
+elseif ($Unstructured) { $UseUnstructured = $true }
 
 # Helpers
 function Dc {
@@ -226,7 +253,10 @@ function Initialize-Directories {
     "enhanced-ai-agent-os/data/alertmanager",
     "enhanced-ai-agent-os/data/loki",
     "logs/api",
-    "data/api"
+    "data/api",
+    # Unstructured worker (created regardless; used when -Unstructured)
+    "data/unstructured",
+    "logs/unstructured"
   )
   foreach ($p in $paths) { $full = Join-Path $DeployTmpRoot $p; if (-not (Test-Path $full)) { New-Item -ItemType Directory -Path $full -Force | Out-Null } }
 }
@@ -398,10 +428,24 @@ function Wait-Healthy([string]$name, [int]$seconds = 360) {
 
 function Invoke-PhaseCore {
   Write-Log "Starting core: postgres, neo4j, rabbitmq"
-  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs postgres neo4j rabbitmq
+  if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs postgres neo4j rabbitmq
+  } else {
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs postgres neo4j rabbitmq
+  }
   Wait-Healthy 'enhanced-ai-postgres' 300
   Wait-Healthy 'enhanced-ai-neo4j' 480
   Wait-Healthy 'enhanced-ai-rabbitmq' 300
+}
+
+# Optional phase: Unstructured worker
+function Invoke-PhaseUnstructured {
+  if (-not $UseUnstructured) { return }
+  if (-not (Test-Path $UnstructuredComposeFile)) { Write-Log "-Unstructured specified but overlay not found at $UnstructuredComposeFile; skipping" 'WARN'; return }
+  Write-Log "Starting Unstructured worker"
+  try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile build unstructured-worker | Out-Null } catch {}
+  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs unstructured-worker
+  try { Wait-Healthy 'neov3-unstructured-worker' 240 } catch { Write-Log "Unstructured worker not healthy yet" 'WARN' }
 }
 
 function Invoke-DatabaseMigrations {
@@ -418,7 +462,13 @@ function Invoke-DatabaseMigrations {
 
 function Invoke-PhaseMonitoring {
   Write-Log "Starting monitoring stack"
-  try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector } catch { Write-Log $_.Exception.Message 'WARN' }
+  try {
+    if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector
+    } else {
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector
+    }
+  } catch { Write-Log $_.Exception.Message 'WARN' }
   $gp = ${env:GRAFANA_PORT}; if (-not $gp) { $gp = 3000 }
   $pp = ${env:PROMETHEUS_PORT}; if (-not $pp) { $pp = 9090 }
   $lp = ${env:LOKI_PORT}; if (-not $lp) { $lp = 3100 }
@@ -437,19 +487,29 @@ function Invoke-PhaseOrchestration {
 
 function Invoke-PhaseAPI {
   Write-Log "Building and starting API"
-  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile build api-service
-  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs api-service
+  if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile build api-service
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs api-service
+  } else {
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile build api-service
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs api-service
+  }
   Wait-Healthy 'enhanced-ai-agent-api' 300
 }
 
 function Write-Summary {
   Write-Host "`n=== docker compose ps ==="
-  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile ps
+  if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile ps
+  } else {
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile ps
+  }
   Write-Host "`n=== health summary ==="
   @(
     'enhanced-ai-postgres',
     'enhanced-ai-neo4j',
     'enhanced-ai-rabbitmq',
+    'neov3-unstructured-worker',
     'enhanced-ai-n8n',
     'enhanced-ai-prometheus',
     'enhanced-ai-grafana',
@@ -471,10 +531,20 @@ Initialize-Directories
 New-OverrideFile
 Update-GitIgnore
 New-NetworkIfMissing
-if (-not $SkipPull) { Write-Log "docker compose pull"; try { Dc --project-directory $Script:Root -f $ComposeFile -f $OverrideFile --env-file $EnvFile pull | Out-Null } catch { Write-Log $_.Exception.Message 'WARN' } }
+if (-not $SkipPull) {
+  Write-Log "docker compose pull"
+  try {
+    if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
+      Dc --project-directory $Script:Root -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile --env-file $EnvFile pull | Out-Null
+    } else {
+      Dc --project-directory $Script:Root -f $ComposeFile -f $OverrideFile --env-file $EnvFile pull | Out-Null
+    }
+  } catch { Write-Log $_.Exception.Message 'WARN' }
+}
 if ($Fresh) { Invoke-BuildAll }
 if ($Status) { Write-Summary; exit 0 }
 Invoke-PhaseCore
+Invoke-PhaseUnstructured
 Invoke-DatabaseMigrations
 Invoke-PhaseMonitoring
 Invoke-PhaseOrchestration

@@ -1,5 +1,6 @@
 import os
-from flask import Flask, jsonify
+from pathlib import Path
+from flask import Flask, jsonify, redirect, send_file
 from flask_cors import CORS
 from .config import get_config
 from .extensions import db, ma, jwt, api as restx_api, socketio
@@ -47,20 +48,36 @@ def create_app() -> Flask:
     init_metrics(app)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
 
-    # Root route for convenience (register BEFORE RESTX so it takes precedence)
+    # Root landing page with links to ReDoc and Swagger UI
     @app.route("/")
     def index():
-        return jsonify({
-            "status": "ok",
-            "message": "Enhanced AI Agent API",
-            "endpoints": {
-                "health": "/system/health",
-                "auth": "/auth",
-                "agents": "/agents",
-                "workflows": "/workflows",
-                "autonomy": "/api/autonomy"
-            }
-        })
+        return (
+            """
+            <!doctype html>
+            <html>
+              <head>
+                <meta charset=\"utf-8\" />
+                <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+                <title>NeoV3 API</title>
+                <style>
+                  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; margin: 2rem; }
+                  a { color: #2563eb; text-decoration: none; }
+                  .links a { display:block; margin: .5rem 0; }
+                </style>
+              </head>
+              <body>
+                <h1>NeoV3 API</h1>
+                <p>Choose a documentation view:</p>
+                <div class=\"links\">
+                  <a href=\"/redoc\">ReDoc (recommended)</a>
+                  <a href=\"/api/docs\">Swagger UI (/api/docs)</a>
+                </div>
+              </body>
+            </html>
+            """,
+            200,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
     # Note: Do not register an empty path ('') — Flask requires leading '/'
 
     # Back-compat health endpoint at root scope (RESTX is under /api now)
@@ -97,28 +114,37 @@ def create_app() -> Flask:
     # Error handlers
     register_error_handlers(app)
 
-    # ReDoc documentation at /redoc (served via CDN, spec at /api/swagger.json)
+    # Optional local Redoc bundle path
+    REDOC_LOCAL_PATH = Path(__file__).resolve().parent.parent / "documentation" / "api" / "vendor" / "redoc.standalone.js"
+
+    # Serve local Redoc bundle if enabled and present
+    @app.route("/assets/redoc.js")
+    def redoc_js():
+        if os.getenv("USE_LOCAL_REDOC", "false").lower() == "true" and REDOC_LOCAL_PATH.exists():
+            return send_file(str(REDOC_LOCAL_PATH), mimetype="application/javascript")
+        return jsonify({"error": "Local ReDoc not enabled or missing"}), 404
+
+    # ReDoc documentation at /redoc (uses local bundle when enabled, else pinned CDN)
     @app.route("/redoc")
     def redoc():
-        return (
-            """
+        use_local = os.getenv("USE_LOCAL_REDOC", "false").lower() == "true" and REDOC_LOCAL_PATH.exists()
+        script_src = "/assets/redoc.js" if use_local else "https://cdn.jsdelivr.net/npm/redoc@2.1.4/bundles/redoc.standalone.js"
+        html = f"""
             <!DOCTYPE html>
             <html>
             <head>
               <meta charset=\"utf-8\"/>
               <title>NeoV3 API – ReDoc</title>
               <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>
-              <style> body { margin: 0; padding: 0; } </style>
+              <style> body {{ margin: 0; padding: 0; }} </style>
             </head>
             <body>
               <redoc spec-url='/api/swagger.json'></redoc>
-              <script src="https://cdn.jsdelivr.net/npm/redoc/bundles/redoc.standalone.js"></script>
+              <script src=\"{script_src}\"></script>
             </body>
             </html>
-            """,
-            200,
-            {"Content-Type": "text/html; charset=utf-8"},
-        )
+        """
+        return (html, 200, {"Content-Type": "text/html; charset=utf-8"})
 
     # DB create (dev only) and attach SQLAlchemy metrics listeners
     with app.app_context():

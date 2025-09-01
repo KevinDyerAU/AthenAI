@@ -9,6 +9,9 @@ deploy_tmp/
 # Deployment logs
 deployment.local.log
 cloud-deployment.log
-deploy_tmp/
-.env
-deployment.local.log
+
+# Python bytecode/cache
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/

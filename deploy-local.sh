@@ -7,6 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
 COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
+UNSTRUCTURED_COMPOSE_FILE="$PROJECT_DIR/docker-compose.unstructured.yml"
 ENV_FILE="$PROJECT_DIR/.env"
 ENV_EXAMPLE_CANDIDATES=("$PROJECT_DIR/.env.example" "$PROJECT_DIR/unified.env.example")
 LOG_FILE="$PROJECT_DIR/deployment.local.log"
@@ -30,13 +31,14 @@ usage() {
   cat <<'EOF'
 NeoV3 Local Deployment
 
-Usage: ./deploy-local.sh [--fresh | --reuse] [--status] [--check] [--help]
+Usage: ./deploy-local.sh [--fresh | --reuse] [--status] [--check] [--no-unstructured] [--help]
 
 Options:
   --fresh   Bring the stack down (-v) and recreate containers
   --reuse   Reuse existing containers (no recreate), skip pulls
   --status  Print docker compose ps and per-container health and exit
   --check   Validate tools, .env keys, and compose config (no changes)
+  --no-unstructured  Opt out of starting the Unstructured worker (enabled by default)
   --help    Show this help and exit
 
 Phases:
@@ -50,13 +52,15 @@ EOF
 }
 
 # --- Args ---
-SKIP_PULL=false; FRESH_START=false; DOCKER_UP_ARGS=""; STATUS_ONLY=false; CHECK_ONLY=false
+SKIP_PULL=false; FRESH_START=false; DOCKER_UP_ARGS=""; STATUS_ONLY=false; CHECK_ONLY=false; USE_UNSTRUCTURED=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --reuse) SKIP_PULL=true; FRESH_START=false; DOCKER_UP_ARGS="--no-recreate" ;;
     --fresh) SKIP_PULL=false; FRESH_START=true;  DOCKER_UP_ARGS="--force-recreate --build" ;;
     --status) STATUS_ONLY=true ;;
     --check) CHECK_ONLY=true ;;
+    --unstructured|--with-unstructured) USE_UNSTRUCTURED=true ;;
+    --no-unstructured|--without-unstructured) USE_UNSTRUCTURED=false ;;
     --help|-h) usage; exit 0 ;;
     *) warn "Unknown option: $1"; usage; exit 1 ;;
   esac
@@ -189,6 +193,9 @@ ensure_dirs(){
     "enhanced-ai-agent-os/data/loki"
     "logs/api"
     "data/api"
+    # Unstructured worker data/logs (only used when enabled)
+    "data/unstructured"
+    "logs/unstructured"
   )
   for p in "${paths[@]}"; do mkdir -p "$DEPLOY_TMP_ROOT/$p"; done
 }
@@ -239,6 +246,10 @@ check_env_keys(){
   if (( ${#missing[@]} > 0 )); then
     err "Missing required keys in .env: ${missing[*]}"
   fi
+  # Optional but recommended when using --unstructured
+  if [[ "$USE_UNSTRUCTURED" == true ]]; then
+    if ! grep -qE "^\s*UNSTRUCTURED_QUEUE\s*=\S+" "$ENV_FILE" 2>/dev/null; then warn "UNSTRUCTURED_QUEUE not set in .env; default will be used (documents.process)"; fi
+  fi
   success "All required .env keys present"
 }
 preflight_prepare(){
@@ -255,8 +266,13 @@ run_check(){
   log "Running preflight checks (no changes)"
   require_tools
   check_env_keys
-  if docker_compose -f "$COMPOSE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" config >/dev/null 2>&1; then success "docker compose config OK"; else err "docker compose config failed"; fi
-  echo -e "\n=== existing containers (if any) ==="; docker_compose -f "$COMPOSE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" ps || true
+  if [[ "$USE_UNSTRUCTURED" == true && -f "$UNSTRUCTURED_COMPOSE_FILE" ]]; then
+    if docker_compose -f "$COMPOSE_FILE" -f "$UNSTRUCTURED_COMPOSE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" config >/dev/null 2>&1; then success "docker compose config OK"; else err "docker compose config failed"; fi
+    echo -e "\n=== existing containers (if any) ==="; docker_compose -f "$COMPOSE_FILE" -f "$UNSTRUCTURED_COMPOSE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" ps || true
+  else
+    if docker_compose -f "$COMPOSE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" config >/dev/null 2>&1; then success "docker compose config OK"; else err "docker compose config failed"; fi
+    echo -e "\n=== existing containers (if any) ==="; docker_compose -f "$COMPOSE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" ps || true
+  fi
   echo -e "\n=== health (if running) ===";
   for c in \
     enhanced-ai-postgres \
@@ -297,11 +313,28 @@ verify_api_health(){
 
 phase_core(){
   log "Starting core: postgres, neo4j, rabbitmq, redis"
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS postgres neo4j rabbitmq redis
+  if [[ "$USE_UNSTRUCTURED" == true ]]; then
+    docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$UNSTRUCTURED_COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS postgres neo4j rabbitmq redis
+  else
+    docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS postgres neo4j rabbitmq redis
+  fi
   wait_healthy enhanced-ai-postgres 300
   wait_healthy enhanced-ai-neo4j 480
   wait_healthy enhanced-ai-rabbitmq 300
   wait_healthy enhanced-ai-redis 180
+}
+
+# Optional phase: Unstructured worker
+phase_unstructured(){
+  [[ "$USE_UNSTRUCTURED" == true ]] || return 0
+  if [[ ! -f "$UNSTRUCTURED_COMPOSE_FILE" ]]; then
+    warn "--unstructured specified but $UNSTRUCTURED_COMPOSE_FILE not found; skipping"
+    return 0
+  fi
+  log "Starting Unstructured worker"
+  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$UNSTRUCTURED_COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" build unstructured-worker || true
+  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$UNSTRUCTURED_COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS unstructured-worker
+  wait_healthy neov3-unstructured-worker 240 || warn "Unstructured worker health not green yet; continuing"
 }
 
 phase_migrations(){
@@ -339,20 +372,30 @@ phase_orchestration(){
 
 phase_api(){
   log "Building and starting API"
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" build api-service
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS api-service
+  if [[ "$USE_UNSTRUCTURED" == true ]]; then
+    docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$UNSTRUCTURED_COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" build api-service
+    docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$UNSTRUCTURED_COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS api-service
+  else
+    docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" build api-service
+    docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS api-service
+  fi
   wait_healthy enhanced-ai-agent-api 300
   verify_api_health
 }
 
 summary(){
   echo -e "\n=== docker compose ps ===" | tee -a "$LOG_FILE"
-  docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" ps | tee -a "$LOG_FILE"
+  if [[ "$USE_UNSTRUCTURED" == true ]]; then
+    docker_compose -f "$COMPOSE_FILE" -f "$UNSTRUCTURED_COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" ps | tee -a "$LOG_FILE"
+  else
+    docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" ps | tee -a "$LOG_FILE"
+  fi
   echo -e "\n=== health summary ==="
   for c in \
     enhanced-ai-postgres \
     enhanced-ai-neo4j \
     enhanced-ai-rabbitmq \
+    neov3-unstructured-worker \
     enhanced-ai-n8n \
     enhanced-ai-prometheus \
     enhanced-ai-grafana \
@@ -371,6 +414,9 @@ validate_stack(){
   if docker exec enhanced-ai-redis redis-cli PING | grep -q PONG; then ok=$((ok+1)); else echo "Redis PING failed"; fail=$((fail+1)); fi
   if curl -fsS "http://localhost:15672/api/overview" -u "${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}" >/dev/null 2>&1; then ok=$((ok+1)); else echo "RabbitMQ management check failed"; fail=$((fail+1)); fi
   if curl -fsS "http://localhost:5678" >/dev/null 2>&1; then ok=$((ok+1)); else echo "n8n HTTP check failed"; fail=$((fail+1)); fi
+  if [[ "$USE_UNSTRUCTURED" == true ]]; then
+    if docker ps --format '{{.Names}}' | grep -q '^neov3-unstructured-worker$'; then ok=$((ok+1)); else echo "Unstructured worker not running"; fail=$((fail+1)); fi
+  fi
   echo "Validation passed=${ok} failed=${fail}"
   if (( fail > 0 )); then err "One or more validation checks failed"; fi
 }
@@ -409,11 +455,19 @@ main(){
   generate_override
   ensure_gitignore
   ensure_network
-  [[ "$SKIP_PULL" == false ]] && { log "docker compose pull"; docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" pull || true; }
+  if [[ "$SKIP_PULL" == false ]]; then
+    log "docker compose pull"
+    if [[ "$USE_UNSTRUCTURED" == true && -f "$UNSTRUCTURED_COMPOSE_FILE" ]]; then
+      docker_compose -f "$COMPOSE_FILE" -f "$UNSTRUCTURED_COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" pull || true
+    else
+      docker_compose -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" --env-file "$ENV_FILE" pull || true
+    fi
+  fi
   if [[ "$STATUS_ONLY" == true ]]; then
     summary; exit 0
   fi
   phase_core
+  phase_unstructured
   phase_migrations
   phase_monitoring
   phase_orchestration
