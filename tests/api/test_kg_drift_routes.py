@@ -19,6 +19,10 @@ def app(monkeypatch):
     )
 
     # Avoid real RabbitMQ
+    import api.utils.rabbitmq
+    monkeypatch.setattr(api.utils.rabbitmq, "ensure_coordination_bindings", lambda: True)
+    monkeypatch.setattr(api.utils.rabbitmq, "publish_exchange", lambda *a, **k: None)
+    monkeypatch.setattr(api.utils.rabbitmq, "publish_exchange_profiled", lambda *a, **k: None)
     from api.resources import kg_drift as kg_drift_mod
     monkeypatch.setattr(kg_drift_mod, "publish_exchange", lambda *args, **kwargs: None)
 
@@ -43,7 +47,7 @@ def client(app):
 
 def auth_headers(app):
     with app.app_context():
-        token = create_access_token(identity={"id": "test-user"})
+        token = create_access_token(identity="test-user")
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -94,7 +98,8 @@ def test_remediation_winner_selection_and_dry_run(app, client, monkeypatch):
     class Dummy:
         def run_query(self, *args, **kwargs):
             raise AssertionError("run_query should not be called in dry-run")
-    monkeypatch.setattr(kd, "get_client", lambda: Dummy())
+    monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: Dummy())
+    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: Dummy())
 
     resp = client.post(
         "/api/kg_drift/remediate",
@@ -128,7 +133,8 @@ def test_remediation_escalation_creates_request_and_no_edge_changes(app, client,
                 raise AssertionError("Edge update should not be executed on escalate")
             return []
     mc = MockClient()
-    monkeypatch.setattr(kd, "get_client", lambda: mc)
+    monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: mc)
+    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: mc)
 
     resp = client.post(
         "/api/kg_drift/remediate",
@@ -145,10 +151,35 @@ def test_remediation_escalation_creates_request_and_no_edge_changes(app, client,
 
 
 def test_quality_snapshot_records_and_emits(app, client, monkeypatch):
-    # Force stable metrics
-    from api.services import knowledge_drift as kd
-    monkeypatch.setattr(kd, "assess_quality", lambda: {"entities": 1, "relations": 1, "orphans": 0, "contradictions": [], "avg_confidence": 1.0, "last_update_ms": 0, "age_ms": 0, "quality_score": 1.0})
+    class MockClient:
+        def run_query(self, cypher, params=None):
+            if "count(e)" in cypher:
+                return [{"c": 10}]
+            elif "count(r)" in cypher:
+                return [{"c": 5}]
+            elif "avg(r.confidence)" in cypher or "avg(coalesce(r.confidence" in cypher:
+                return [{"avgc": 0.85}]
+            elif "max(coalesce(r.lastUpdated" in cypher:
+                return [{"mx": 1640995200000}]
+            elif "WHERE NOT (e)--() RETURN e.id AS id" in cypher:
+                return []
+            elif "MATCH (s:Entity)-[r:RELATED]->(o:Entity)" in cypher:
+                return []
+            elif "WHERE NOT" in cypher:
+                return [{"c": 0}]
+            elif "SHOW CONSTRAINTS" in cypher:
+                return []
+            elif "CALL db.indexes()" in cypher:
+                return []
+            elif "IS NULL" in cypher:
+                return []
+            return []
+    monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.utils.kg_schema.get_client", lambda: MockClient())
+    
     # Mock record to no-op
+    from api.services import knowledge_drift as kd
     monkeypatch.setattr(kd, "record_quality_snapshot", lambda *args, **kwargs: None)
     r = client.post("/api/kg_drift/quality/snapshot", headers=auth_headers(app))
     assert r.status_code == 200
@@ -167,7 +198,8 @@ def test_resolution_requests_list_and_approve_reject(app, client, monkeypatch):
                 return [[{"id": "RR1", "status": "pending", "createdAt": 1}] ]
             return []
     mc = MockClient()
-    monkeypatch.setattr("api.resources.kg_drift.get_client", lambda: mc)
+    monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: mc)
+    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: mc)
 
     # GET list
     res = client.get("/api/kg_drift/resolution/requests", headers=auth_headers(app))

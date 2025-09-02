@@ -101,10 +101,10 @@ def create_app() -> Flask:
     restx_api.add_namespace(substrate_ns)
     restx_api.add_namespace(autonomy_ns)
     restx_api.add_namespace(kg_drift_ns)
-    restx_api.add_namespace(self_healing_ns, path="/api/self_healing")
-    restx_api.add_namespace(coordination.ns, path="/api/coordination")
-    restx_api.add_namespace(validation.ns, path="/api/validation")
-    restx_api.add_namespace(security_resources.ns, path="/api/security")
+    restx_api.add_namespace(self_healing_ns, path="/self_healing")
+    restx_api.add_namespace(coordination.ns, path="/coordination")
+    restx_api.add_namespace(validation.ns, path="/validation")
+    restx_api.add_namespace(security_resources.ns, path="/security")
     restx_api.add_namespace(documents_ns)
 
     # Socket.IO

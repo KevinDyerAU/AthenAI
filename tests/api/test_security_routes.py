@@ -1,12 +1,31 @@
 import pytest
+from flask_jwt_extended import create_access_token
+from api.app import create_app
+from api.extensions import db
+
+
+@pytest.fixture()
+def app():
+    app = create_app()
+    app.config.update({
+        "TESTING": True,
+        "DATABASE_URL": "sqlite:///:memory:",
+        "JWT_SECRET_KEY": "test-secret-key",
+    })
+    with app.app_context():
+        db.create_all()
+        yield app
+
+
+@pytest.fixture()
+def client(app):
+    return app.test_client()
 
 
 def auth_headers(app):
-    try:
-        from tests.api.utils import auth_headers as helper
-        return helper(app)
-    except Exception:
-        return {"Authorization": "Bearer test"}
+    with app.app_context():
+        token = create_access_token(identity="test-user")
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture(autouse=True)
