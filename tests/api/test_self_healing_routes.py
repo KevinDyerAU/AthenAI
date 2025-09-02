@@ -124,7 +124,7 @@ def test_python_uuid_persistence_on_heal(app, client, monkeypatch):
             if "CREATE (h:HealingAttempt" in cypher:
                 calls["params"].append(params)
             return []
-    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.services.self_healing.get_client", lambda: MockClient())
 
     from api.resources import self_healing as sh_mod
     # Make selection deterministic and executor return applied True
@@ -162,7 +162,7 @@ def test_config_rollback_gitops_integration(app, monkeypatch):
     class MockClient:
         def run_query(self, cypher, params=None):
             return []
-    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.services.self_healing.get_client", lambda: MockClient())
     res = sh_mod.svc.heal(
         issue={"diagnosis": {"issue_type": "configuration_or_dependency", "root_cause": "deploy", "confidence": 0.6, "impacted_components": ["api"], "recommended_strategies": ["rollback_config"]}},
         context={"gitops": GitOps(), "config_target": "api"},

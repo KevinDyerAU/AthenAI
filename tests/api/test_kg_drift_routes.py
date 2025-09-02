@@ -98,7 +98,7 @@ def test_remediation_winner_selection_and_dry_run(app, client, monkeypatch):
     class Dummy:
         def run_query(self, *args, **kwargs):
             raise AssertionError("run_query should not be called in dry-run")
-    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: Dummy())
+    monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: Dummy())
 
     resp = client.post(
         "/api/kg_drift/remediate",
@@ -132,7 +132,7 @@ def test_remediation_escalation_creates_request_and_no_edge_changes(app, client,
                 raise AssertionError("Edge update should not be executed on escalate")
             return []
     mc = MockClient()
-    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: mc)
+    monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: mc)
 
     resp = client.post(
         "/api/kg_drift/remediate",
@@ -171,7 +171,7 @@ def test_resolution_requests_list_and_approve_reject(app, client, monkeypatch):
                 return [[{"id": "RR1", "status": "pending", "createdAt": 1}] ]
             return []
     mc = MockClient()
-    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: mc)
+    monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: mc)
 
     # GET list
     res = client.get("/api/kg_drift/resolution/requests", headers=auth_headers(app))
