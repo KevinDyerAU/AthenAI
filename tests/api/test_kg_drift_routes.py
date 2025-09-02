@@ -43,7 +43,7 @@ def client(app):
 
 def auth_headers(app):
     with app.app_context():
-        token = create_access_token(identity={"id": "test-user"})
+        token = create_access_token(identity="test-user")
     return {"Authorization": f"Bearer {token}"}
 
 

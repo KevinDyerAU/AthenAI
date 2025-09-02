@@ -52,7 +52,7 @@ def client(app):
 
 def auth_headers(app):
     with app.app_context():
-        token = create_access_token(identity={"id": "test-user"})
+        token = create_access_token(identity="test-user")
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -63,7 +63,7 @@ def test_relation_update(app, client):
         "object_id": "o1",
         "attributes": {"confidence": 0.9}
     }
-    resp = client.post("/knowledge/relations/update", json=payload, headers=auth_headers(app))
+    resp = client.post("/api/knowledge/relations/update", json=payload, headers=auth_headers(app))
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["relation"]["type"] == "KNOWS"
@@ -77,14 +77,14 @@ def test_relation_delete(app, client):
         "object_id": "o1",
         "reason": "cleanup"
     }
-    resp = client.post("/knowledge/relations/delete", json=payload, headers=auth_headers(app))
+    resp = client.post("/api/knowledge/relations/delete", json=payload, headers=auth_headers(app))
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["relation"]["state"] == "inactive"
 
 
 def test_provenance_get(app, client):
-    resp = client.get("/knowledge/provenance?entityId=s1&direction=both&limit=10", headers=auth_headers(app))
+    resp = client.get("/api/knowledge/provenance?entityId=s1&direction=both&limit=10", headers=auth_headers(app))
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["count"] == 2
