@@ -560,33 +560,54 @@ The REST API is organized into logical namespaces, each handling specific aspect
 ```mermaid
 graph LR
     subgraph "Authentication"
-        AUTH[/auth<br/>Login, Logout<br/>Token Management<br/>User Registration]
+        AUTH["/auth  
+Login, Logout  
+Token Management  
+User Registration"]
     end
-    
+
     subgraph "Agent Management"
-        AGENTS[/agents<br/>Agent CRUD<br/>Status Monitoring<br/>Configuration]
+        AGENTS["/agents  
+Agent CRUD  
+Status Monitoring  
+Configuration"]
     end
-    
+
     subgraph "Knowledge Operations"
-        KNOWLEDGE[/knowledge<br/>Entity Management<br/>Search & Query<br/>Relationship Mapping]
+        KNOWLEDGE["/knowledge  
+Entity Management  
+Search & Query  
+Relationship Mapping"]
     end
-    
+
     subgraph "Conversation Handling"
-        CONV[/conversations<br/>Chat Sessions<br/>Message History<br/>Context Management]
+        CONV["/conversations  
+Chat Sessions  
+Message History  
+Context Management"]
     end
-    
+
     subgraph "Workflow Control"
-        WORKFLOWS[/workflows<br/>Template Management<br/>Execution Control<br/>Status Monitoring]
+        WORKFLOWS["/workflows  
+Template Management  
+Execution Control  
+Status Monitoring"]
     end
-    
+
     subgraph "System Operations"
-        SYSTEM[/system<br/>Health Checks<br/>Configuration<br/>Monitoring]
+        SYSTEM["/system  
+Health Checks  
+Configuration  
+Monitoring"]
     end
-    
+
     subgraph "Integration Points"
-        INTEGRATIONS[/integrations<br/>Webhook Handlers<br/>External APIs<br/>Data Import/Export]
+        INTEGRATIONS["/integrations  
+Webhook Handlers  
+External APIs  
+Data Import/Export"]
     end
-    
+
     AUTH --> AGENTS
     AGENTS --> KNOWLEDGE
     KNOWLEDGE --> CONV
