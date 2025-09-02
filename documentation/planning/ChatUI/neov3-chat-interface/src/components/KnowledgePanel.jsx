@@ -1,20 +1,88 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, X, Upload, Download, File, FileText, Image, Archive, Plus, Filter, MoreVertical, Eye, Trash2, Tag, Star, Clock } from 'lucide-react';
 import { Button } from './ui/button';
+import serviceManager from '../services';
 
 const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, onDownload }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [sortBy, setSortBy] = useState('relevance');
-  const [viewMode, setViewMode] = useState('list'); // list or grid
+  const [viewMode, setViewMode] = useState('list');
+  const [files, setFiles] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    loadFiles();
+  }, []);
+
+  const loadFiles = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await serviceManager.listFiles(50, 0);
+      setFiles(result.results || []);
+    } catch (err) {
+      setError(err.message);
+      console.error('Failed to load files:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      loadFiles();
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await serviceManager.searchFiles(searchQuery, 20);
+      setFiles(result.results || []);
+    } catch (err) {
+      setError(err.message);
+      console.error('Search failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteFile = async (fileId) => {
+    try {
+      await serviceManager.deleteFile(fileId);
+      setFiles(prev => prev.filter(file => file.id !== fileId));
+      if (onItemDelete) {
+        onItemDelete(fileId);
+      }
+    } catch (err) {
+      setError(err.message);
+      console.error('Delete failed:', err);
+    }
+  };
+
+  const handleDownloadFile = async (file) => {
+    try {
+      await serviceManager.downloadFile(file.id, file.name);
+      if (onDownload) {
+        onDownload(file);
+      }
+    } catch (err) {
+      setError(err.message);
+      console.error('Download failed:', err);
+    }
+  };
+
+  const displayItems = files.length > 0 ? files : (items || []);
 
   const categories = [
-    { id: 'all', name: 'All', count: items.length },
-    { id: 'documents', name: 'Documents', count: items.filter(i => i.category === 'Documents').length },
-    { id: 'conversations', name: 'Conversations', count: items.filter(i => i.category === 'Conversations').length },
-    { id: 'insights', name: 'Insights', count: items.filter(i => i.category === 'Insights').length },
-    { id: 'uploads', name: 'Uploads', count: items.filter(i => i.category === 'Uploads').length },
-    { id: 'generated', name: 'Generated', count: items.filter(i => i.category === 'Generated').length }
+    { id: 'all', name: 'All', count: displayItems.length },
+    { id: 'documents', name: 'Documents', count: displayItems.filter(i => i.category === 'Documents').length },
+    { id: 'conversations', name: 'Conversations', count: displayItems.filter(i => i.category === 'Conversations').length },
+    { id: 'insights', name: 'Insights', count: displayItems.filter(i => i.category === 'Insights').length },
+    { id: 'uploads', name: 'Uploads', count: displayItems.filter(i => i.category === 'Uploads').length },
+    { id: 'generated', name: 'Generated', count: displayItems.filter(i => i.category === 'Generated').length }
   ];
 
   const getFileIcon = (type) => {
@@ -35,10 +103,11 @@ const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, 
     return 'text-gray-600 bg-gray-100';
   };
 
-  const filteredItems = items
+  const filteredItems = displayItems
     .filter(item => {
-      const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           item.content?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = (item.title || item.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           (item.content || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           (item.tags && item.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())));
       const matchesCategory = selectedCategory === 'all' || 
                              item.category?.toLowerCase() === selectedCategory ||
                              (selectedCategory === 'uploads' && item.source === 'upload') ||
@@ -48,8 +117,8 @@ const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, 
     .sort((a, b) => {
       switch (sortBy) {
         case 'relevance': return (b.relevance || 0) - (a.relevance || 0);
-        case 'date': return new Date(b.lastModified) - new Date(a.lastModified);
-        case 'name': return a.title.localeCompare(b.title);
+        case 'date': return new Date(b.lastModified || b.uploaded_at || 0) - new Date(a.lastModified || a.uploaded_at || 0);
+        case 'name': return (a.title || a.name || '').localeCompare(b.title || b.name || '');
         case 'size': return (b.size || 0) - (a.size || 0);
         default: return 0;
       }
@@ -66,10 +135,10 @@ const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, 
         console.log('Preview item:', item.id);
         break;
       case 'download':
-        onDownload?.(item);
+        handleDownloadFile(item);
         break;
       case 'delete':
-        onItemDelete?.(item.id);
+        handleDeleteFile(item.id);
         break;
       case 'tag':
         console.log('Tag item:', item.id);
@@ -105,7 +174,7 @@ const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, 
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between">
             <h4 className="text-sm font-medium text-knowledge-text truncate">
-              {item.title}
+              {item.title || item.name}
             </h4>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <Button
@@ -137,7 +206,7 @@ const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, 
           
           <div className="flex items-center gap-2 mt-1">
             <span className="text-xs text-muted-foreground">
-              {item.lastModified}
+              {item.lastModified || item.uploaded_at || 'Unknown date'}
             </span>
             {item.relevance && (
               <span className={`text-xs px-2 py-0.5 rounded-full ${getRelevanceColor(item.relevance)}`}>
@@ -146,7 +215,7 @@ const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, 
             )}
             {item.size && (
               <span className="text-xs text-muted-foreground">
-                {formatFileSize(item.size)}
+                {typeof item.size === 'number' ? formatFileSize(item.size) : item.size}
               </span>
             )}
           </div>
@@ -211,6 +280,7 @@ const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, 
             placeholder="Search knowledge..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
             className="knowledge-search pl-10"
           />
         </div>
@@ -257,7 +327,20 @@ const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, 
 
       {/* Items List */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-        {filteredItems.length === 0 ? (
+        {error && (
+          <div className="p-4 bg-red-50 border-l-4 border-red-400 text-red-700">
+            <p className="text-sm">{error}</p>
+            <Button variant="ghost" size="sm" onClick={loadFiles} className="mt-2">
+              Retry
+            </Button>
+          </div>
+        )}
+        
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        ) : filteredItems.length === 0 ? (
           <div className="p-8 text-center">
             <File className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-sm font-medium text-foreground mb-2">
@@ -312,12 +395,12 @@ const KnowledgePanel = ({ items, onItemSelect, onItemDelete, onClose, onUpload, 
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
               <div className="text-muted-foreground">Total Items</div>
-              <div className="font-medium">{items.length}</div>
+              <div className="font-medium">{displayItems.length}</div>
             </div>
             <div>
               <div className="text-muted-foreground">High Relevance</div>
               <div className="font-medium">
-                {items.filter(i => i.relevance >= 0.8).length}
+                {displayItems.filter(i => i.relevance >= 0.8).length}
               </div>
             </div>
           </div>

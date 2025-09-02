@@ -123,30 +123,35 @@ const FileUpload = ({ onFileUpload, onClose, maxFiles = 5, maxSize = 10 * 1024 *
           f.id === fileObj.id ? { ...f, status: 'uploading' } : f
         ));
         
-        // Simulate upload progress
-        for (let progress = 0; progress <= 100; progress += 10) {
-          setUploadProgress(prev => ({ ...prev, [fileObj.id]: progress }));
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        setFiles(prev => prev.map(f => 
-          f.id === fileObj.id ? { ...f, status: 'completed' } : f
-        ));
-        
-        // Call the upload handler
+        // Simulate upload progress for UI feedback
+        const progressInterval = setInterval(() => {
+          setUploadProgress(prev => {
+            const current = prev[fileObj.id] || 0;
+            const next = Math.min(current + 10, 90);
+            return { ...prev, [fileObj.id]: next };
+          });
+        }, 200);
+
+        // Call the upload handler with file and metadata
         if (onFileUpload) {
-          onFileUpload({
+          await onFileUpload({
             id: fileObj.id,
             name: fileObj.name,
             size: fileObj.size,
             type: fileObj.type,
-            url: `https://api.neov3.com/files/${fileObj.id}`, // Mock URL
-            uploadedAt: new Date().toISOString()
+            file: fileObj.file,
+            category: fileObj.category || 'document',
+            tags: fileObj.tags || [],
+            description: fileObj.description || ''
           });
         }
+
+        clearInterval(progressInterval);
+        setUploadProgress(prev => ({ ...prev, [fileObj.id]: 100 }));
+        
+        setFiles(prev => prev.map(f => 
+          f.id === fileObj.id ? { ...f, status: 'completed' } : f
+        ));
         
       } catch (error) {
         setFiles(prev => prev.map(f => 
