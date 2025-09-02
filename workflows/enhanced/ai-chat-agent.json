@@ -52,15 +52,21 @@
         "promptType": "chat",
         "provider": "openai",
         "model": "gpt-4",
-        "systemMessage": "You are the AI Chat Agent for the Enhanced AI Agent OS. Maintain natural, helpful dialogue. If a request requires multi-agent orchestration (complex research, multi-step workflows, data integrations), propose delegation with a JSON object: { delegate: true, queue: 'agents.research' | 'agents.analysis' | 'agents.creative', rationale: string, plan: string[] }. Otherwise respond directly. Always be concise and user-friendly.",
+        "systemMessage": "You are the AI Chat Agent for the Enhanced AI Agent OS. Use the Think Tool to analyze user requests and determine the best response strategy. Maintain natural, helpful dialogue. If a request requires multi-agent orchestration (complex research, multi-step workflows, data integrations), propose delegation with a JSON object: { delegate: true, queue: 'agents.research' | 'agents.analysis' | 'agents.creative', rationale: string, plan: string[] }. Otherwise respond directly. Always be concise and user-friendly.",
         "inputKey": "={{$json.text}}",
-        "toolsAgent": false,
+        "tools": [
+          {
+            "name": "toolThink",
+            "description": "Think through user request complexity and response strategy"
+          }
+        ],
+        "toolsAgent": true,
         "temperature": 0.4,
         "maxTokens": 500
       },
       "id": "AI_Chat",
-      "name": "AI Chat (Chat Agent)",
-      "type": "n8n-nodes-base.aiAgent",
+      "name": "AI Chat (Chat Agent with Think Tool)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [980, 200]
     },

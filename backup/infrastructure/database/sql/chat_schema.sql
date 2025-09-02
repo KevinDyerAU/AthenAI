@@ -3,6 +3,9 @@
 CREATE TABLE IF NOT EXISTS chat_sessions (
   session_id TEXT PRIMARY KEY,
   user_id TEXT,
+  message TEXT,
+  context JSONB DEFAULT '{}',
+  message_count INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -16,3 +19,14 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 
 CREATE INDEX IF NOT EXISTS chat_messages_session_created_idx ON chat_messages (session_id, created_at);
+
+CREATE TABLE IF NOT EXISTS chat_responses (
+  id BIGSERIAL PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+  user_id TEXT,
+  response TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS chat_responses_session_created_idx ON chat_responses (session_id, created_at);

@@ -60,8 +60,14 @@
         "promptType": "chat",
         "provider": "openai",
         "model": "gpt-4",
-        "systemMessage": "You are the Execution Agent. Using tasks, parallel plan, recovery policy, and progress scaffold, produce an execution orchestration plan with quality gates, monitoring hooks, and escalation. Output strict JSON with: orchestration (batches, concurrency), error_policies (retries, backoff, circuit_breakers), progress_model, quality_gates, monitoring (metrics, alerts), escalation (conditions, actions), runbook (steps), risks, next_steps.",
+        "systemMessage": "You are the Execution Agent. Use the Think Tool to analyze tasks, parallel plan, recovery policy, and progress scaffold, then produce an execution orchestration plan with quality gates, monitoring hooks, and escalation. Output strict JSON with: orchestration (batches, concurrency), error_policies (retries, backoff, circuit_breakers), progress_model, quality_gates, monitoring (metrics, alerts), escalation (conditions, actions), runbook (steps), risks, next_steps.",
         "inputKey": "={{$json}}",
+        "tools": [
+          {
+            "name": "toolThink",
+            "description": "Think through execution strategy and risk analysis"
+          }
+        ],
         "toolsAgent": true,
         "tooling": {"allowHttp": true, "allowCode": false},
         "temperature": 0.2,
@@ -69,7 +75,7 @@
       },
       "id": "Synthesize",
       "name": "AI Synthesize Execution Plan",
-      "type": "n8n-nodes-base.aiAgent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [1240, 200]
     },

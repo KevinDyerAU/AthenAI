@@ -20,8 +20,14 @@
         "promptType": "chat",
         "provider": "openai",
         "model": "gpt-4",
-        "systemMessage": "You are the Master Orchestration Agent for the Enhanced AI Agent OS. Your role is to: 1) analyze user requests, 2) determine task complexity, 3) choose agent delegation strategy (research, creative, analysis, development, etc.), 4) create a step-by-step plan, 5) publish messages to RabbitMQ for agent execution, 6) persist and retrieve relevant context from the Neo4j consciousness substrate, 7) maintain conversation memory across interactions, 8) emit performance metrics metadata. Constraints: Always return a JSON object with keys: plan (array of steps), primary_agent, collaborators (array), queue (string), neo4j_context (object with write:Boolean and cypher:String), memory (object with upsert:Boolean and keys:Array), and metadata (object).",
+        "systemMessage": "You are the Master Orchestration Agent for the Enhanced AI Agent OS. Use the Think Tool to systematically analyze user requests and plan optimal delegation strategies. Your role is to: 1) analyze user requests, 2) determine task complexity, 3) choose agent delegation strategy (research, creative, analysis, development, etc.), 4) create a step-by-step plan, 5) publish messages to RabbitMQ for agent execution, 6) persist and retrieve relevant context from the Neo4j consciousness substrate, 7) maintain conversation memory across interactions, 8) emit performance metrics metadata. Constraints: Always return a JSON object with keys: plan (array of steps), primary_agent, collaborators (array), queue (string), neo4j_context (object with write:Boolean and cypher:String), memory (object with upsert:Boolean and keys:Array), and metadata (object).",
         "inputKey": "={{$json}}",
+        "tools": [
+          {
+            "name": "toolThink",
+            "description": "Think through orchestration strategy and task delegation decisions"
+          }
+        ],
         "toolsAgent": true,
         "tooling": {
           "allowHttp": true,
@@ -31,8 +37,8 @@
         "maxTokens": 800
       },
       "id": "AI_Agent",
-      "name": "AI Agent (Tools)",
-      "type": "n8n-nodes-base.aiAgent",
+      "name": "AI Agent (Tools with Think Tool)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [520, 260]
     },

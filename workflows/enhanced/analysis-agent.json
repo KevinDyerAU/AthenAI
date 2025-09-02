@@ -60,8 +60,14 @@
         "promptType": "chat",
         "provider": "openai",
         "model": "gpt-4",
-        "systemMessage": "You are the Analysis Agent. Using provided analysis results, data quality, and visualization specs, produce a comprehensive analytical report. Include: executive_summary, data_quality_findings, key_insights, statistical_tests (with assumptions), predictive_models (metrics), anomalies, visualizations (list with titles and types), recommendations, limitations, confidence. Output strict JSON.",
+        "systemMessage": "You are the Analysis Agent. Use the Think Tool to systematically analyze the provided data and results. Using provided analysis results, data quality, and visualization specs, produce a comprehensive analytical report. Include: executive_summary, data_quality_findings, key_insights, statistical_tests (with assumptions), predictive_models (metrics), anomalies, visualizations (list with titles and types), recommendations, limitations, confidence. Output strict JSON.",
         "inputKey": "={{$json}}",
+        "tools": [
+          {
+            "name": "toolThink",
+            "description": "Think through data analysis systematically and identify key patterns"
+          }
+        ],
         "toolsAgent": true,
         "tooling": {"allowHttp": true, "allowCode": false},
         "temperature": 0.2,
@@ -69,7 +75,7 @@
       },
       "id": "Synthesize",
       "name": "AI Synthesize Analysis Report",
-      "type": "n8n-nodes-base.aiAgent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [1240, 200]
     },

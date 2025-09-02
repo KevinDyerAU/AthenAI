@@ -213,6 +213,7 @@ services:
       - n8n_data:/home/node/.n8n
       - ./infrastructure/n8n/config/settings.json:/home/node/.n8n/settings.json:ro
       - ./workflows:/home/node/.n8n/workflows
+      - ./scripts/load-workflows.sh:/scripts/load-workflows.sh:ro
       - n8n_logs:/home/node/.n8n/logs
       - n8n_backups:/backups
     ports:
@@ -237,6 +238,23 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # =============================================================================
+  # N8N WORKFLOW LOADER - Automatically loads workflows at deploy time
+  # =============================================================================
+  workflow-loader:
+    image: curlimages/curl:latest
+    container_name: n8n-workflow-loader
+    restart: "no"
+    depends_on:
+      n8n:
+        condition: service_healthy
+    volumes:
+      - ./workflows:/workflows:ro
+      - ./scripts:/scripts:ro
+    command: ["/scripts/load-workflows.sh"]
+    networks:
+      - enhanced-ai-network
 
   # =============================================================================
   # MONITORING - Prometheus, Grafana, Loki, Promtail, Alertmanager

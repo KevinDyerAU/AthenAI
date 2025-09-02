@@ -1,0 +1,367 @@
+{
+  "name": "Enhanced Chat Coordinator",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "chat/send",
+        "responseCode": 200,
+        "responseHeaders": {
+          "entries": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "noResponseBody": false
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Chat Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [220, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Normalize incoming payload and ensure session context\nconst body = $json || {};\nconst text = body.message || body.text || '';\nconst sessionId = body.sessionId || body.session_id || `session_${Date.now()}`;\nconst userId = body.userId || body.user_id || 'anonymous';\n\n// Extract context and metadata\nconst context = body.context || {};\nconst metadata = {\n  userAgent: body.userAgent || 'unknown',\n  timestamp: new Date().toISOString(),\n  messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`\n};\n\n// Validate message content\nif (!text.trim()) {\n  throw new Error('Message content cannot be empty');\n}\n\nreturn {\n  message: text.trim(),\n  sessionId: sessionId,\n  userId: userId,\n  context: context,\n  metadata: metadata,\n  timestamp: metadata.timestamp\n};"
+      },
+      "id": "normalize-input",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [440, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_sessions (session_id, user_id, message, context, created_at, updated_at) \nVALUES ($1, $2, $3, $4, $5, $5) \nON CONFLICT (session_id) \nDO UPDATE SET \n  message = EXCLUDED.message,\n  context = EXCLUDED.context,\n  updated_at = EXCLUDED.updated_at,\n  message_count = COALESCE(chat_sessions.message_count, 0) + 1\nRETURNING session_id, user_id, message_count, created_at, updated_at;",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.sessionId, $json.userId, $json.message, JSON.stringify($json.context), $json.timestamp] }}"
+        }
+      },
+      "id": "session-manager",
+      "name": "Session Manager",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [660, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT message, context, created_at \nFROM chat_sessions \nWHERE session_id = $1 \nORDER BY created_at DESC \nLIMIT 10;",
+        "additionalFields": {
+          "queryParameters": "={{ [$('normalize-input').item.json.sessionId] }}"
+        }
+      },
+      "id": "get-session-history",
+      "name": "Get Session History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [880, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Build conversation context from session history\nconst currentMessage = $('normalize-input').item.json;\nconst sessionData = $('session-manager').item.json;\nconst history = $json || [];\n\n// Build conversation history\nconst conversationHistory = history.reverse().map(item => ({\n  role: 'user',\n  content: item.message,\n  timestamp: item.created_at\n}));\n\n// Add current message\nconversationHistory.push({\n  role: 'user',\n  content: currentMessage.message,\n  timestamp: currentMessage.timestamp\n});\n\n// Build enhanced context\nconst enhancedContext = {\n  sessionId: currentMessage.sessionId,\n  userId: currentMessage.userId,\n  messageCount: sessionData.message_count || 1,\n  conversationHistory: conversationHistory,\n  userContext: currentMessage.context,\n  systemContext: {\n    timestamp: new Date().toISOString(),\n    sessionAge: sessionData.created_at,\n    capabilities: ['think-tool', 'delegation', 'knowledge-graph', 'task-orchestration']\n  }\n};\n\nreturn {\n  message: currentMessage.message,\n  context: enhancedContext,\n  sessionInfo: sessionData\n};"
+      },
+      "id": "build-context",
+      "name": "Build Context",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1100, 200]
+    },
+    {
+      "parameters": {
+        "promptType": "chat",
+        "systemMessage": "You are the Main Coordinator for the Enhanced AI Agent OS (NeoV3). You are an intelligent, helpful, and professional AI assistant that coordinates with specialized agents to accomplish complex tasks.\n\nYour core responsibilities:\n1. Engage in natural, helpful dialogue with users\n2. Analyze requests and determine if they require specialist agent involvement\n3. Use the Think Tool for complex decisions and multi-step reasoning\n4. Coordinate task delegation when appropriate\n5. Maintain conversation context and session continuity\n\nCapabilities available to you:\n- Think Tool: For complex reasoning and decision-making\n- Specialist Agent Delegation: Route tasks to appropriate specialized agents\n- Knowledge Graph Access: Query the Neo4j consciousness substrate\n- Task Orchestration: Break down and coordinate complex workflows\n\nCommunication style:\n- Professional yet approachable\n- Clear and concise responses\n- Proactive in offering assistance\n- Transparent about capabilities and limitations\n\nWhen to use the Think Tool:\n- Complex multi-step problems\n- Decision-making with multiple factors\n- Task analysis and planning\n- Ambiguous or unclear requests\n\nAlways consider the conversation history and user context when responding.",
+        "tools": [
+          {
+            "name": "think-tool",
+            "description": "Use this tool to think through complex problems step by step before responding. Essential for multi-step reasoning, decision-making, and task analysis."
+          },
+          {
+            "name": "delegate-to-specialist",
+            "description": "Delegate specific tasks to specialized agents (analysis, research, creative, development, etc.) when the request requires domain expertise."
+          },
+          {
+            "name": "query-knowledge-graph",
+            "description": "Query the Neo4j knowledge graph for relevant information, relationships, and context."
+          },
+          {
+            "name": "orchestrate-workflow",
+            "description": "Initiate complex workflows that require coordination of multiple agents and systems."
+          }
+        ],
+        "model": "gpt-4",
+        "temperature": 0.7,
+        "maxTokens": 1000,
+        "additionalFields": {
+          "messages": "={{ $json.context.conversationHistory }}"
+        }
+      },
+      "id": "coordinator-agent",
+      "name": "Main Coordinator Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [1320, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-main",
+          "name": "OpenAI Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format the response for the chat interface\nconst agentResponse = $json;\nconst context = $('build-context').item.json.context;\nconst sessionInfo = $('build-context').item.json.sessionInfo;\n\n// Extract response text\nlet responseText = '';\nif (agentResponse.text) {\n  responseText = agentResponse.text;\n} else if (agentResponse.output) {\n  responseText = agentResponse.output;\n} else if (agentResponse.content) {\n  responseText = agentResponse.content;\n} else {\n  responseText = 'I apologize, but I encountered an issue processing your request. Please try again.';\n}\n\n// Build response metadata\nconst metadata = {\n  messageId: `resp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,\n  model: 'coordinator-agent',\n  timestamp: new Date().toISOString(),\n  sessionId: context.sessionId,\n  userId: context.userId,\n  messageCount: context.messageCount,\n  tokensUsed: agentResponse.usage?.total_tokens || 0,\n  processingTime: Date.now() - new Date(context.systemContext.timestamp).getTime(),\n  capabilities: context.systemContext.capabilities,\n  toolsUsed: agentResponse.toolsUsed || []\n};\n\n// Check if response indicates delegation or workflow initiation\nconst actionRequired = responseText.toLowerCase().includes('delegating') || \n                     responseText.toLowerCase().includes('initiating workflow');\n\nreturn {\n  success: true,\n  response: responseText,\n  metadata: metadata,\n  actionRequired: actionRequired,\n  sessionInfo: {\n    sessionId: context.sessionId,\n    messageCount: context.messageCount,\n    lastActivity: metadata.timestamp\n  }\n};"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1540, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_responses (session_id, user_id, response, metadata, created_at)\nVALUES ($1, $2, $3, $4, $5)\nRETURNING id, created_at;",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.sessionInfo.sessionId, $json.metadata.userId, $json.response, JSON.stringify($json.metadata), $json.metadata.timestamp] }}"
+        }
+      },
+      "id": "log-response",
+      "name": "Log Response",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1760, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": [
+            {
+              "name": "Action Required",
+              "condition": {
+                "leftValue": "={{ $('format-response').item.json.actionRequired }}",
+                "operation": "equal",
+                "rightValue": true
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "noAction"
+      },
+      "id": "action-router",
+      "name": "Action Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [1980, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/webhook/tasks/orchestrate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Source",
+              "value": "chat-coordinator"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "task",
+              "value": "={{ $('build-context').item.json.message }}"
+            },
+            {
+              "name": "context",
+              "value": "={{ $('build-context').item.json.context }}"
+            },
+            {
+              "name": "source",
+              "value": "chat-coordinator"
+            }
+          ]
+        }
+      },
+      "id": "trigger-workflow",
+      "name": "Trigger Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2200, 120]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Final response preparation\nconst mainResponse = $('format-response').item.json;\nconst logResult = $('log-response').item.json;\n\n// Check if workflow was triggered\nlet workflowTriggered = false;\nlet workflowResponse = null;\n\nif ($input.all().length > 1) {\n  // Workflow was triggered\n  const workflowResult = $input.all().find(item => item.json.workflowId);\n  if (workflowResult) {\n    workflowTriggered = true;\n    workflowResponse = workflowResult.json;\n  }\n}\n\nreturn {\n  success: true,\n  message: mainResponse.response,\n  sessionId: mainResponse.sessionInfo.sessionId,\n  messageId: mainResponse.metadata.messageId,\n  timestamp: mainResponse.metadata.timestamp,\n  metadata: {\n    ...mainResponse.metadata,\n    responseLogged: true,\n    logId: logResult.id,\n    workflowTriggered: workflowTriggered,\n    workflowResponse: workflowResponse\n  }\n};"
+      },
+      "id": "final-response",
+      "name": "Final Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2420, 200]
+    }
+  ],
+  "connections": {
+    "webhook-trigger": {
+      "main": [
+        [
+          {
+            "node": "normalize-input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalize-input": {
+      "main": [
+        [
+          {
+            "node": "session-manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "session-manager": {
+      "main": [
+        [
+          {
+            "node": "get-session-history",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-session-history": {
+      "main": [
+        [
+          {
+            "node": "build-context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "build-context": {
+      "main": [
+        [
+          {
+            "node": "coordinator-agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "coordinator-agent": {
+      "main": [
+        [
+          {
+            "node": "format-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format-response": {
+      "main": [
+        [
+          {
+            "node": "log-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "log-response": {
+      "main": [
+        [
+          {
+            "node": "action-router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "action-router": {
+      "main": [
+        [
+          {
+            "node": "trigger-workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "final-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "trigger-workflow": {
+      "main": [
+        [
+          {
+            "node": "final-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-09-02T02:00:00.000Z",
+      "updatedAt": "2025-09-02T02:00:00.000Z",
+      "id": "chat-coordinator",
+      "name": "Chat Coordinator"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-09-02T02:00:00.000Z",
+  "versionId": "1"
+}
+

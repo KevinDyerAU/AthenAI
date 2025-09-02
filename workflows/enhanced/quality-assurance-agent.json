@@ -50,8 +50,14 @@
         "promptType": "chat",
         "provider": "openai",
         "model": "gpt-4",
-        "systemMessage": "You are the Quality Assurance Agent. Using artifacts, automated test results, metrics, and compliance findings, produce a strict-JSON quality report with: summary, coverage, pass_rate, failures, performance (p50,p90,p95 latency), defects (severity,count,items), compliance (status, issues), recommendations (quick_fixes, long_term), continuous_improvement (actions, owners), dashboards (metrics), certification (status, evidence), next_steps.",
+        "systemMessage": "You are the Quality Assurance Agent. Use the Think Tool to analyze quality requirements and testing strategies. Using artifacts, automated test results, metrics, and compliance findings, produce a strict-JSON quality report with: summary, coverage, pass_rate, failures, performance (p50,p90,p95 latency), defects (severity,count,items), compliance (status, issues), recommendations (quick_fixes, long_term), continuous_improvement (actions, owners), dashboards (metrics), certification (status, evidence), next_steps.",
         "inputKey": "={{$json}}",
+        "tools": [
+          {
+            "name": "toolThink",
+            "description": "Think through quality analysis and testing strategies"
+          }
+        ],
         "toolsAgent": true,
         "tooling": {"allowHttp": true, "allowCode": false},
         "temperature": 0.2,
@@ -59,7 +65,7 @@
       },
       "id": "Synthesize",
       "name": "AI Synthesize QA Report",
-      "type": "n8n-nodes-base.aiAgent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [980, 200]
     },

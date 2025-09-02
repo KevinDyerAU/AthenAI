@@ -103,8 +103,14 @@
         "promptType": "chat",
         "provider": "openai",
         "model": "gpt-4",
-        "systemMessage": "You are the Research Agent. Using provided documents (title,url,snippet,analysis{summary,key_insights,sentiment,entities,quality_notes} and credibility), produce a comprehensive research report. Methodology: multi-source verification, bias detection, temporal relevance, authority evaluation. Output strict JSON with: executive_summary (string), key_findings (array of strings), comparative_analysis (array), risks_biases_limitations (array), recommendations (array), citations (array of {title,url,source,accessed_at,format}), confidence (0-1), next_steps (array). Always include citations for each finding.",
+        "systemMessage": "You are the Research Agent. Use the Think Tool to systematically analyze the research methodology and evidence quality before synthesizing findings. Using provided documents (title,url,snippet,analysis{summary,key_insights,sentiment,entities,quality_notes} and credibility), produce a comprehensive research report. Methodology: multi-source verification, bias detection, temporal relevance, authority evaluation. Output strict JSON with: executive_summary (string), key_findings (array of strings), comparative_analysis (array), risks_biases_limitations (array), recommendations (array), citations (array of {title,url,source,accessed_at,format}), confidence (0-1), next_steps (array). Always include citations for each finding.",
         "inputKey": "={{$json}}",
+        "tools": [
+          {
+            "name": "toolThink",
+            "description": "Think through research methodology and evidence quality systematically"
+          }
+        ],
         "toolsAgent": true,
         "tooling": {"allowHttp": true, "allowCode": false},
         "temperature": 0.2,
@@ -112,7 +118,7 @@
       },
       "id": "Synthesize",
       "name": "AI Synthesize Report (Tools)",
-      "type": "n8n-nodes-base.aiAgent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [2160, 200]
     },
