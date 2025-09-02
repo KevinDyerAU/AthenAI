@@ -69,6 +69,7 @@ jobs:
       - name: Quality Gate (fail on gate violation)
         env:
           DISABLE_PERF: true
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python scripts/testing/quality_gate.py
 
