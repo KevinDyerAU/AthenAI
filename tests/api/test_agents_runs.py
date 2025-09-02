@@ -6,10 +6,20 @@ from api.extensions import db
 from api.models import Agent, AgentRun
 
 
+@pytest.fixture(autouse=True)
+def mock_mq_and_db(monkeypatch):
+    monkeypatch.setattr("api.utils.rabbitmq.publish_exchange", lambda *a, **k: None)
+    monkeypatch.setattr("api.utils.rabbitmq.ensure_coordination_bindings", lambda: True)
+    from api.resources import agents as agents_mod
+    monkeypatch.setattr(agents_mod, "trigger_webhook", lambda *args, **kwargs: None)
+
+
 @pytest.fixture()
 def app(monkeypatch):
     os.environ["FLASK_ENV"] = "development"
     os.environ["INTEGRATION_SECRET"] = "secret123"
+    os.environ["TESTING"] = "true"
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     app = create_app()
     app.config.update(
         TESTING=True,
@@ -36,7 +46,7 @@ def client(app):
 
 def auth_headers(app):
     with app.app_context():
-        token = create_access_token(identity={"id": "test-user"})
+        token = create_access_token(identity="test-user")
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -49,7 +59,7 @@ def test_agent_run_flow(app, client):
         agent_id = a.id
 
     # Execute agent -> creates AgentRun and returns execution_id
-    resp = client.post(f"/agents/{agent_id}/execute", headers=auth_headers(app))
+    resp = client.post(f"/api/agents/{agent_id}/execute", headers=auth_headers(app))
     assert resp.status_code == 202
     data = resp.get_json()
     execution_id = data["execution_id"]
@@ -63,19 +73,19 @@ def test_agent_run_flow(app, client):
         "metrics": {"latency_ms": 10},
     }
     resp2 = client.post(
-        "/integrations/n8n/runs",
+        "/api/integrations/n8n/runs",
         json=payload,
         headers={"X-Integration-Token": os.environ["INTEGRATION_SECRET"]},
     )
     assert resp2.status_code == 200
 
     # Verify runs list and metrics
-    runs = client.get(f"/agents/{agent_id}/runs", headers=auth_headers(app)).get_json()
+    runs = client.get(f"/api/agents/{agent_id}/runs", headers=auth_headers(app)).get_json()
     assert runs["total"] == 1
     assert runs["items"][0]["status"] == "completed"
     assert runs["items"][0]["duration_ms"] is not None
 
-    metrics = client.get(f"/agents/{agent_id}/metrics", headers=auth_headers(app)).get_json()
+    metrics = client.get(f"/api/agents/{agent_id}/metrics", headers=auth_headers(app)).get_json()
     assert metrics["total_runs"] == 1
     assert metrics["completed"] == 1
     assert metrics["failed"] == 0

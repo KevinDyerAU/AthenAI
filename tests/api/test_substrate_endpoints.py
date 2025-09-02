@@ -27,6 +27,8 @@ pytestmark = pytest.mark.skipif(not _neo4j_available(), reason="Neo4j not availa
 
 @pytest.fixture(scope="module")
 def app():
+    os.environ["TESTING"] = "true"
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     app = create_app()
     app.config.update(TESTING=True)
     return app
@@ -40,7 +42,7 @@ def client(app):
 @pytest.fixture()
 def auth_header(app):
     with app.app_context():
-        token = create_access_token(identity={"id": "test-user"})
+        token = create_access_token(identity="test-user")
     return {"Authorization": f"Bearer {token}"}
 
 

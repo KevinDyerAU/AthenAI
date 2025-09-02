@@ -5,9 +5,17 @@ from api.app import create_app
 from api.extensions import db
 
 
+@pytest.fixture(autouse=True)
+def mock_mq_and_db(monkeypatch):
+    monkeypatch.setattr("api.utils.rabbitmq.publish_exchange", lambda *a, **k: None)
+    monkeypatch.setattr("api.utils.rabbitmq.ensure_coordination_bindings", lambda: True)
+
+
 @pytest.fixture()
 def app(monkeypatch):
     os.environ["FLASK_ENV"] = "development"
+    os.environ["TESTING"] = "true"
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     app = create_app()
     app.config.update(
         TESTING=True,
@@ -58,13 +66,13 @@ def client(app):
 
 def auth_headers(app):
     with app.app_context():
-        token = create_access_token(identity={"id": "test-user"})
+        token = create_access_token(identity="test-user")
     return {"Authorization": f"Bearer {token}"}
 
 
 def test_messages_pagination(app, client):
     cid = "c1"
-    resp = client.get(f"/conversations/{cid}/messages?limit=2&offset=0", headers=auth_headers(app))
+    resp = client.get(f"/api/conversations/{cid}/messages?limit=2&offset=0", headers=auth_headers(app))
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["count"] == 3
@@ -75,14 +83,14 @@ def test_messages_pagination(app, client):
 def test_permissions_list_set_revoke(app, client):
     cid = "c1"
     # list
-    resp = client.get(f"/conversations/{cid}/permissions", headers=auth_headers(app))
+    resp = client.get(f"/api/conversations/{cid}/permissions", headers=auth_headers(app))
     assert resp.status_code == 200
     items = resp.get_json()["items"]
     assert {i["user_id"] for i in items} == {"u1", "u2"}
 
     # set role
     resp2 = client.post(
-        f"/conversations/{cid}/permissions",
+        f"/api/conversations/{cid}/permissions",
         json={"user_id": "u3", "role": "viewer"},
         headers=auth_headers(app),
     )
@@ -93,7 +101,7 @@ def test_permissions_list_set_revoke(app, client):
 
     # revoke
     resp3 = client.delete(
-        f"/conversations/{cid}/permissions/u3",
+        f"/api/conversations/{cid}/permissions/u3",
         headers=auth_headers(app),
     )
     assert resp3.status_code == 200

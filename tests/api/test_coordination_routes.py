@@ -1,24 +1,45 @@
 import pytest
-
-
-def auth_headers(app):
-    # Reuse helper from existing tests if available; else craft minimal header.
-    try:
-        from tests.api.utils import auth_headers as helper
-        return helper(app)
-    except Exception:
-        return {"Authorization": "Bearer test"}
+from flask_jwt_extended import create_access_token
+from api.app import create_app
+from api.extensions import db
 
 
 @pytest.fixture(autouse=True)
 def mock_mq_and_db(monkeypatch):
-    # Stub RabbitMQ publish
-    monkeypatch.setattr("api.utils.rabbitmq.publish_exchange", lambda *a, **k: None)
+    import api.utils.rabbitmq
+    monkeypatch.setattr(api.utils.rabbitmq, "ensure_coordination_bindings", lambda: True)
+    monkeypatch.setattr(api.utils.rabbitmq, "publish_exchange", lambda *a, **k: None)
+    monkeypatch.setattr(api.utils.rabbitmq, "publish_exchange_profiled", lambda *a, **k: None)
     # Stub Neo4j client
     class MockClient:
         def run_query(self, cypher, params=None):
             return []
     monkeypatch.setattr("api.services.coordination.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.utils.audit.audit_event", lambda *a, **k: None)
+
+
+@pytest.fixture()
+def app():
+    app = create_app()
+    app.config.update({
+        "TESTING": True,
+        "DATABASE_URL": "sqlite:///:memory:",
+        "JWT_SECRET_KEY": "test-secret-key",
+    })
+    with app.app_context():
+        db.create_all()
+        yield app
+
+
+@pytest.fixture()
+def client(app):
+    return app.test_client()
+
+
+def auth_headers(app):
+    with app.app_context():
+        token = create_access_token(identity="test-user")
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_agent_register_and_list(app, client):

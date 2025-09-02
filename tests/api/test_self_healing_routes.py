@@ -8,6 +8,8 @@ from api.extensions import db
 @pytest.fixture()
 def app(monkeypatch):
     os.environ["FLASK_ENV"] = "development"
+    os.environ["TESTING"] = "true"
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     app = create_app()
     app.config.update(
         TESTING=True,
@@ -17,8 +19,34 @@ def app(monkeypatch):
     )
 
     # Avoid real RabbitMQ
+    import api.utils.rabbitmq
+    monkeypatch.setattr(api.utils.rabbitmq, "ensure_coordination_bindings", lambda: True)
+    monkeypatch.setattr(api.utils.rabbitmq, "publish_exchange", lambda *a, **k: None)
+    monkeypatch.setattr(api.utils.rabbitmq, "publish_exchange_profiled", lambda *a, **k: None)
     from api.resources import self_healing as sh_mod
     monkeypatch.setattr(sh_mod, "publish_exchange", lambda *args, **kwargs: None)
+
+    class MockClient:
+        def run_query(self, cypher, params=None):
+            if "CREATE (h:HealingAttempt" in cypher:
+                return []
+            elif "CREATE (m:MetricSnapshot" in cypher:
+                return []
+            elif "MATCH (h:HealingAttempt)" in cypher:
+                return []
+            elif "avg(" in cypher:
+                return [{"avg": 0.5}]
+            elif "count(" in cypher:
+                return [{"count": 10}]
+            return []
+    
+    monkeypatch.setattr("api.services.self_healing.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: MockClient())
+
+    monkeypatch.setattr(
+        "api.utils.audit.audit_event",
+        lambda event_type, details, user_id=None, session_id=None: None,
+    )
 
     # Capture socketio emits
     from api import extensions as ext
@@ -41,7 +69,7 @@ def client(app):
 
 def auth_headers(app):
     with app.app_context():
-        token = create_access_token(identity={"id": "test-user"})
+        token = create_access_token(identity="test-user")
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -55,8 +83,17 @@ def test_analyze_emits_and_returns_structure(app, client, monkeypatch):
         "issue_type": "degradation", "root_cause": "elevated error rate", "confidence": 0.8,
         "impacted_components": ["api"], "recommended_strategies": ["restart_unhealthy"]
     }
-    monkeypatch.setattr(sh_mod.svc.detector, "detect", lambda metrics: [type("A", (), anomaly)])
-    monkeypatch.setattr(sh_mod.svc.diagnoser, "diagnose", lambda anomalies, ctx: type("D", (), diagnosis))
+    
+    class SimpleAnomaly:
+        def __init__(self, data):
+            self.__dict__.update(data)
+    
+    class SimpleDiagnosis:
+        def __init__(self, data):
+            self.__dict__.update(data)
+    
+    monkeypatch.setattr(sh_mod.svc.detector, "detect", lambda metrics: [SimpleAnomaly(anomaly)])
+    monkeypatch.setattr(sh_mod.svc.diagnoser, "diagnose", lambda anomalies, ctx: SimpleDiagnosis(diagnosis))
 
     resp = client.post("/api/self_healing/analyze", json={"metrics": {"error_rate": 0.2}}, headers=auth_headers(app))
     assert resp.status_code == 200
@@ -118,7 +155,7 @@ def test_python_uuid_persistence_on_heal(app, client, monkeypatch):
             if "CREATE (h:HealingAttempt" in cypher:
                 calls["params"].append(params)
             return []
-    monkeypatch.setattr("api.resources.self_healing.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.services.self_healing.get_client", lambda: MockClient())
 
     from api.resources import self_healing as sh_mod
     # Make selection deterministic and executor return applied True
@@ -156,7 +193,7 @@ def test_config_rollback_gitops_integration(app, monkeypatch):
     class MockClient:
         def run_query(self, cypher, params=None):
             return []
-    monkeypatch.setattr("api.resources.self_healing.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.services.self_healing.get_client", lambda: MockClient())
     res = sh_mod.svc.heal(
         issue={"diagnosis": {"issue_type": "configuration_or_dependency", "root_cause": "deploy", "confidence": 0.6, "impacted_components": ["api"], "recommended_strategies": ["rollback_config"]}},
         context={"gitops": GitOps(), "config_target": "api"},
