@@ -1,6 +1,6 @@
 class FileService {
   constructor() {
-    this.apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    this.apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   }
 
   async uploadFile(file, metadata = {}) {
@@ -389,5 +389,5 @@ class MockFileService {
   }
 }
 
-const useRealFileService = process.env.REACT_APP_USE_REAL_FILE_SERVICE === 'true';
+const useRealFileService = import.meta.env.VITE_USE_REAL_FILE_SERVICE === 'true';
 export default useRealFileService ? new FileService() : new MockFileService();

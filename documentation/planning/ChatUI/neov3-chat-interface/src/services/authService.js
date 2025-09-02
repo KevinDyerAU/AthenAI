@@ -1,6 +1,6 @@
 class AuthService {
   constructor() {
-    this.apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    this.apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     this.tokenKey = 'access_token';
     this.refreshTokenKey = 'refresh_token';
     this.userKey = 'user_profile';
@@ -325,5 +325,5 @@ class MockAuthService {
   }
 }
 
-const useRealAuthService = process.env.REACT_APP_USE_REAL_AUTH_SERVICE === 'true';
+const useRealAuthService = import.meta.env.VITE_USE_REAL_AUTH_SERVICE === 'true';
 export default useRealAuthService ? new AuthService() : new MockAuthService();

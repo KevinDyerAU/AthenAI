@@ -14,7 +14,7 @@ class WebSocketService {
   }
 
   connect(token = null) {
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     
     const socketOptions = {
       transports: ['websocket'],
@@ -323,5 +323,5 @@ class MockWebSocketService {
   }
 }
 
-const useRealWebSocket = process.env.REACT_APP_USE_REAL_WEBSOCKET === 'true';
+const useRealWebSocket = import.meta.env.VITE_USE_REAL_WEBSOCKET === 'true';
 export default useRealWebSocket ? new WebSocketService() : new MockWebSocketService();
