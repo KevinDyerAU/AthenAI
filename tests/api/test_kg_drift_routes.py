@@ -99,6 +99,7 @@ def test_remediation_winner_selection_and_dry_run(app, client, monkeypatch):
         def run_query(self, *args, **kwargs):
             raise AssertionError("run_query should not be called in dry-run")
     monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: Dummy())
+    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: Dummy())
 
     resp = client.post(
         "/api/kg_drift/remediate",
@@ -133,6 +134,7 @@ def test_remediation_escalation_creates_request_and_no_edge_changes(app, client,
             return []
     mc = MockClient()
     monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: mc)
+    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: mc)
 
     resp = client.post(
         "/api/kg_drift/remediate",
@@ -149,10 +151,20 @@ def test_remediation_escalation_creates_request_and_no_edge_changes(app, client,
 
 
 def test_quality_snapshot_records_and_emits(app, client, monkeypatch):
-    # Force stable metrics
-    from api.services import knowledge_drift as kd
-    monkeypatch.setattr(kd, "assess_quality", lambda: {"entities": 1, "relations": 1, "orphans": 0, "contradictions": [], "avg_confidence": 1.0, "last_update_ms": 0, "age_ms": 0, "quality_score": 1.0})
+    class MockClient:
+        def run_query(self, cypher, params=None):
+            if "count(e)" in cypher:
+                return [{"c": 10}]
+            elif "count(r)" in cypher:
+                return [{"c": 5}]
+            elif "WHERE NOT" in cypher:
+                return [{"c": 0}]
+            return []
+    monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: MockClient())
+    
     # Mock record to no-op
+    from api.services import knowledge_drift as kd
     monkeypatch.setattr(kd, "record_quality_snapshot", lambda *args, **kwargs: None)
     r = client.post("/api/kg_drift/quality/snapshot", headers=auth_headers(app))
     assert r.status_code == 200
@@ -172,6 +184,7 @@ def test_resolution_requests_list_and_approve_reject(app, client, monkeypatch):
             return []
     mc = MockClient()
     monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: mc)
+    monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: mc)
 
     # GET list
     res = client.get("/api/kg_drift/resolution/requests", headers=auth_headers(app))
