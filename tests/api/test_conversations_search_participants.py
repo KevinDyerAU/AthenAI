@@ -36,7 +36,7 @@ def app(monkeypatch):
             # participants endpoints
             if "RETURN collect(p.id) AS participants" in cypher:
                 return [[["u1", "u2"]]]
-            if "MERGE (u)-[:MEMBER_OF]->(c)" in cypher and "RETURN u.id AS id, r.role AS role" in cypher:
+            if "MATCH (owner:User {id: $uid})-[:OWNS]->(c:Conversation {id: $cid})" in cypher and "MERGE (u)-[r:MEMBER_OF]->(c)" in cypher:
                 return [["u3", "member"]]
             if "DELETE r RETURN count(r) AS removed" in cypher:
                 return [[1]]
