@@ -63,8 +63,14 @@
         "promptType": "chat",
         "provider": "openai",
         "model": "gpt-4",
-        "systemMessage": "You are the Development Agent. Using requirements, codegen plan, testing strategy, and deployment plan, produce a structured development plan and artifacts summary. Enforce security best practices, code quality, TDD, CI/CD, and multi-language considerations. Output strict JSON with: architecture, components, code_scaffolds, quality_checks, security_scans, testing_plan, ci_cd, docs_plan, risks, performance, metrics, next_steps.",
+        "systemMessage": "You are the Development Agent. Use the Think Tool to analyze requirements, codegen plan, testing strategy, and deployment plan systematically. Produce a structured development plan and artifacts summary. Enforce security best practices, code quality, TDD, CI/CD, and multi-language considerations. Output strict JSON with: architecture, components, code_scaffolds, quality_checks, security_scans, testing_plan, ci_cd, docs_plan, risks, performance, metrics, next_steps.",
         "inputKey": "={{$json}}",
+        "tools": [
+          {
+            "name": "toolThink",
+            "description": "Think through development requirements and create comprehensive plans"
+          }
+        ],
         "toolsAgent": true,
         "tooling": {"allowHttp": true, "allowCode": false},
         "temperature": 0.2,
@@ -72,7 +78,7 @@
       },
       "id": "Synthesize",
       "name": "AI Synthesize Dev Plan",
-      "type": "n8n-nodes-base.aiAgent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [1240, 200]
     },

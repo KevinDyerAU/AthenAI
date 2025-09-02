@@ -38,6 +38,29 @@
     },
     {
       "parameters": {
+        "promptType": "chat",
+        "systemMessage": "You are a task analysis specialist. Use the Think Tool to break down complex tasks into manageable components and determine the best approach. Analyze the task complexity, identify required resources, and suggest the optimal routing strategy.",
+        "tools": [
+          {
+            "name": "toolThink",
+            "description": "Think through task complexity and requirements systematically"
+          }
+        ],
+        "model": "gpt-4",
+        "temperature": 0.7,
+        "inputKey": "={{JSON.stringify($json.task)}}"
+      },
+      "id": "Task_Analyzer_Think",
+      "name": "Task Analysis Agent with Think Tool",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [
+        500,
+        200
+      ]
+    },
+    {
+      "parameters": {
         "conditions": {
           "string": [
             {"value1": "={{$json.route}}", "operation": "contains", "value2": "research"}
@@ -115,6 +138,13 @@
   ],
   "connections": {
     "Prepare Task": {
+      "main": [
+        [
+          {"node": "Task Analysis Agent with Think Tool", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Task Analysis Agent with Think Tool": {
       "main": [
         [
           {"node": "Is Research?", "type": "main", "index": 0},

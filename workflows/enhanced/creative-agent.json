@@ -15,7 +15,7 @@
 
     {"parameters": {"conditions": {"boolean": [{"value1": "={{$json.needsRefine}}", "operation": "isTrue"}]}}, "id": "IfRefine", "name": "If Needs Refinement", "type": "n8n-nodes-base.if", "typeVersion": 1, "position": [1760, 200]},
 
-    {"parameters": {"promptType": "chat", "provider": "openai", "model": "gpt-4", "systemMessage": "You are a creative reviser. Improve the draft based on evaluation findings and optional user feedback. Maintain brand/style.", "inputKey": "={{ { draft: $json.output || $json, feedback: $json.feedback, eval: $json.eval, style: $json.style } }}", "toolsAgent": false, "temperature": 0.7, "maxTokens": 1000}, "id": "Revise", "name": "AI Revise", "type": "n8n-nodes-base.aiAgent", "typeVersion": 1, "position": [2020, 160]},
+    {"parameters": {"promptType": "chat", "provider": "openai", "model": "gpt-4", "systemMessage": "You are a creative reviser. Use the Think Tool to analyze the draft and evaluation findings systematically. Improve the draft based on evaluation findings and optional user feedback. Maintain brand/style.", "inputKey": "={{ { draft: $json.output || $json, feedback: $json.feedback, eval: $json.eval, style: $json.style } }}", "tools": [{"name": "toolThink", "description": "Think through creative revision strategy and improvements"}], "toolsAgent": true, "temperature": 0.7, "maxTokens": 1000}, "id": "Revise", "name": "AI Revise", "type": "@n8n/n8n-nodes-langchain.agent", "typeVersion": 1, "position": [2020, 160]},
 
     {"parameters": {"functionCode": "// Increment iteration and re-evaluate\nconst iter=Number($json.iter||1)+1;return [{json:{...$json, iter}}];"}, "id": "NextIter", "name": "Next Iteration", "type": "n8n-nodes-base.function", "typeVersion": 1, "position": [2280, 160]},
 
