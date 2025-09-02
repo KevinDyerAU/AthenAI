@@ -35,12 +35,38 @@ function Write-Log([string]$msg, [string]$level = "INFO") {
   $line | Tee-Object -FilePath $LogFile -Append | Out-Null
 }
 
+# Resolve API host port from env or .env, defaulting to 5000
+function Get-ApiPort {
+  $p = $env:API_HOST_PORT
+  if (-not $p) { $p = Get-DotEnvValue 'API_HOST_PORT' }
+  if (-not $p) { $p = 5000 }
+  return $p
+}
+
+# Verify API JSON health endpoint and fail fast if degraded
+function Verify-ApiHealth {
+  $port = Get-ApiPort
+  $url = "http://localhost:$port/system/health"
+  Write-Log "Verifying API health at $url"
+  try {
+    $resp = Invoke-WebRequest -Uri $url -Method GET -TimeoutSec 5 -UseBasicParsing
+    $body = $resp.Content
+  } catch {
+    Write-Log "API health endpoint not reachable at $url" 'ERROR'
+    throw
+  }
+  if ($body -match '"status"\s*:\s*"degraded"') {
+    Write-Log ("API health degraded: {0}" -f $body) 'WARN'
+    throw "Startup aborted due to degraded API health"
+  }
+}
+
 function Test-EnvKeys {
   $required = @(
     'POSTGRES_USER','POSTGRES_PASSWORD','POSTGRES_DB',
     'NEO4J_PASSWORD',
     'RABBITMQ_DEFAULT_USER','RABBITMQ_DEFAULT_PASS',
-    'API_SECRET_KEY','N8N_ENCRYPTION_KEY','GRAFANA_SECURITY_ADMIN_PASSWORD'
+    'API_SECRET_KEY','N8N_ENCRYPTION_KEY','N8N_BASIC_AUTH_PASSWORD','GRAFANA_SECURITY_ADMIN_PASSWORD'
   )
   if (-not (Test-Path $EnvFile)) { Write-Log ".env not found at $EnvFile" 'ERROR'; return $false }
   $text = Get-Content -Raw -LiteralPath $EnvFile
@@ -120,6 +146,20 @@ function Test-HttpEndpoint([string]$label, [string]$url) {
   } catch {
     Write-Log "$( $label ) HTTP check failed (no-conn) - $( $url )" 'WARN'
   }
+}
+
+# Read a key from the .env file (simple KEY=VALUE parser, ignores comments)
+function Get-DotEnvValue([string]$key) {
+  if (-not (Test-Path $EnvFile)) { return $null }
+  try {
+    $line = Select-String -Path $EnvFile -Pattern "^(?i)\s*${key}\s*=\s*(.*)$" -SimpleMatch:$false -CaseSensitive:$false -Encoding UTF8 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $line) { return $null }
+    $val = $line.Matches[0].Groups[1].Value.Trim()
+    # Strip optional surrounding quotes
+    if ($val.StartsWith('"') -and $val.EndsWith('"')) { $val = $val.Substring(1, $val.Length-2) }
+    if ($val.StartsWith("'") -and $val.EndsWith("'")) { $val = $val.Substring(1, $val.Length-2) }
+    return $val
+  } catch { return $null }
 }
 
 function Show-Usage {
@@ -222,13 +262,17 @@ function Initialize-Secrets {
   Set-Env-IfMissing -key 'NEO4J_PASSWORD' -value (New-SecretString 32)
 
   # RabbitMQ
-  Set-Env-IfMissing -key 'RABBITMQ_DEFAULT_USER' -value 'ai_agent_user'
+  Set-Env-IfMissing -key 'RABBITMQ_DEFAULT_USER' -value 'ai_agent_queue_user'
   Set-Env-IfMissing -key 'RABBITMQ_DEFAULT_PASS' -value (New-SecretString 32)
 
   # API and tooling
   Set-Env-IfMissing -key 'API_SECRET_KEY' -value (New-SecretString 48)
   Set-Env-IfMissing -key 'GRAFANA_SECURITY_ADMIN_PASSWORD' -value (New-SecretString 32)
   Set-Env-IfMissing -key 'N8N_ENCRYPTION_KEY' -value (New-SecretString 48)
+  # n8n basic auth defaults (align with compose defaults)
+  Set-Env-IfMissing -key 'N8N_BASIC_AUTH_ACTIVE' -value 'true'
+  Set-Env-IfMissing -key 'N8N_BASIC_AUTH_USER' -value 'admin'
+  Set-Env-IfMissing -key 'N8N_BASIC_AUTH_PASSWORD' -value (New-SecretString 32)
 }
 
 function Initialize-Directories {
@@ -421,6 +465,31 @@ function Wait-Healthy([string]$name, [int]$seconds = 360) {
   while ((Get-Date) -lt $deadline) {
     $state = $(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $name 2>$null)
     if ($LASTEXITCODE -eq 0 -and $state -eq 'healthy') { Write-Log "$name healthy" 'SUCCESS'; return }
+
+    # Fallback for n8n: if container is running or starting but not yet marked healthy, try HTTP healthz with Basic Auth if set
+    if ($name -eq 'enhanced-ai-n8n' -and $LASTEXITCODE -eq 0 -and ($state -in @('running','starting'))) {
+      $port = if ($env:N8N_PORT) { $env:N8N_PORT } else { (Get-DotEnvValue 'N8N_PORT') }
+      if (-not $port) { $port = 5678 }
+      $user = if ($env:N8N_BASIC_AUTH_USER) { $env:N8N_BASIC_AUTH_USER } else { (Get-DotEnvValue 'N8N_BASIC_AUTH_USER') }
+      $pass = if ($env:N8N_BASIC_AUTH_PASSWORD) { $env:N8N_BASIC_AUTH_PASSWORD } else { (Get-DotEnvValue 'N8N_BASIC_AUTH_PASSWORD') }
+      $headers = @{}
+      $usingAuth = $false
+      if ($user -and $pass) {
+        $pair = "{0}:{1}" -f $user, $pass
+        $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+        $headers['Authorization'] = "Basic $basic"
+        $usingAuth = $true
+      }
+      try {
+        $resp = Invoke-WebRequest -Uri "http://localhost:$port/healthz" -Method GET -TimeoutSec 5 -UseBasicParsing -Headers $headers
+        $code = $resp.StatusCode
+        if ($usingAuth) { Write-Log ("n8n HTTP /healthz probe (auth) -> {0}" -f $code) 'INFO' } else { Write-Log ("n8n HTTP /healthz probe (no-auth) -> {0}" -f $code) 'INFO' }
+        if ($code -in 200,204) { Write-Log "$name HTTP healthz OK; proceeding despite docker health='$state'" 'WARN'; return }
+      } catch {
+        if ($usingAuth) { Write-Log "n8n HTTP /healthz probe (auth) -> no-conn" 'INFO' } else { Write-Log "n8n HTTP /healthz probe (no-auth) -> no-conn" 'INFO' }
+      }
+    }
+
     Start-Sleep -Seconds 5
   }
   throw "Timeout waiting for $name to be healthy"
@@ -495,6 +564,8 @@ function Invoke-PhaseAPI {
     Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs api-service
   }
   Wait-Healthy 'enhanced-ai-agent-api' 300
+  # Extra verification from host perspective
+  try { Verify-ApiHealth } catch { throw }
 }
 
 function Write-Summary {
@@ -550,4 +621,4 @@ Invoke-PhaseMonitoring
 Invoke-PhaseOrchestration
 Invoke-PhaseAPI
 Write-Summary
-Write-Log "Local deployment completed. API http://localhost:5000 Grafana http://localhost:3000 Prometheus http://localhost:9090 n8n http://localhost:5678" 'SUCCESS'
+Write-Log ("Local deployment completed. API http://localhost:{0} Grafana http://localhost:3000 Prometheus http://localhost:9090 n8n http://localhost:5678" -f (Get-ApiPort)) 'SUCCESS'

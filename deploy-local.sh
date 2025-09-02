@@ -119,6 +119,23 @@ replace_env_value(){
   normalize_env_file
 }
 
+# Read a key's value from the .env file (returns empty if not found)
+get_dotenv_value(){
+  local key="$1"
+  [[ -f "$ENV_FILE" ]] || { echo ""; return; }
+  # pick the first matching line KEY=VALUE, ignoring leading spaces
+  local line
+  line=$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$ENV_FILE" | head -n1 || true)
+  if [[ -z "$line" ]]; then echo ""; return; fi
+  local val="${line#*=}"
+  # strip CR and surrounding quotes if present
+  val="${val%$'\r'}"
+  if [[ "${val:0:1}" == '"' && "${val: -1}" == '"' ]] || [[ "${val:0:1}" == "'" && "${val: -1}" == "'" ]]; then
+    val="${val:1:${#val}-2}"
+  fi
+  echo "$val"
+}
+
 # Ensure a secret is present and non-empty.
 # - When FRESH_START=true: if missing OR empty, set to generated value
 # - Otherwise: only set if missing
@@ -152,13 +169,16 @@ ensure_secrets(){
   # Core service passwords/secrets must be non-empty on fresh runs
   ensure_secret_nonempty POSTGRES_PASSWORD 32
   ensure_secret_nonempty NEO4J_PASSWORD 32
-  set_env_if_missing RABBITMQ_DEFAULT_USER ai_agent_user
+  set_env_if_missing RABBITMQ_DEFAULT_USER ai_agent_queue_user
   ensure_secret_nonempty RABBITMQ_DEFAULT_PASS 32
 
   # Platform/application secrets
   ensure_secret_nonempty API_SECRET_KEY 48
   ensure_secret_nonempty GRAFANA_SECURITY_ADMIN_PASSWORD 32
   ensure_secret_nonempty N8N_ENCRYPTION_KEY 48
+  # n8n basic auth defaults (align with compose defaults)
+  set_env_if_missing N8N_BASIC_AUTH_ACTIVE true
+  set_env_if_missing N8N_BASIC_AUTH_USER admin
 
   # Additional common secrets from .env.example that are often left blank
   ensure_secret_nonempty JWT_SECRET 48
@@ -216,7 +236,31 @@ wait_healthy(){
   while (( elapsed < timeout )); do
     local state
     state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name" 2>/dev/null || true)
-    [[ "$state" == "healthy" ]] && { success "$name healthy"; return 0; }
+    if [[ "$state" == "healthy" ]]; then success "$name healthy"; return 0; fi
+
+    # Fallback for n8n: if running or starting but not yet marked healthy, try HTTP /healthz with Basic Auth if set
+    if [[ "$name" == "enhanced-ai-n8n" && ( "$state" == "running" || "$state" == "starting" ) ]]; then
+      local port="${N8N_PORT:-}"
+      if [[ -z "$port" ]]; then port="$(get_dotenv_value N8N_PORT)"; fi
+      if [[ -z "$port" ]]; then port="5678"; fi
+      local nuser="${N8N_BASIC_AUTH_USER:-}"
+      local npass="${N8N_BASIC_AUTH_PASSWORD:-}"
+      if [[ -z "$nuser" ]]; then nuser="$(get_dotenv_value N8N_BASIC_AUTH_USER)"; fi
+      if [[ -z "$npass" ]]; then npass="$(get_dotenv_value N8N_BASIC_AUTH_PASSWORD)"; fi
+      local code
+      if [[ -n "$nuser" && -n "$npass" ]]; then
+        code=$(curl --connect-timeout 2 --max-time 5 -u "$nuser:$npass" -fsS -o /dev/null -w '%{http_code}' "http://localhost:${port}/healthz" 2>/dev/null || true)
+        info "n8n HTTP /healthz probe (auth) -> ${code}"
+      else
+        code=$(curl --connect-timeout 2 --max-time 5 -fsS -o /dev/null -w '%{http_code}' "http://localhost:${port}/healthz" 2>/dev/null || true)
+        info "n8n HTTP /healthz probe (no-auth) -> ${code}"
+      fi
+      if [[ "$code" == "200" || "$code" == "204" ]]; then
+        warn "$name HTTP healthz OK; proceeding despite docker health='$state'"
+        return 0
+      fi
+    fi
+
     sleep 5; elapsed=$((elapsed+5))
   done
   err "Timeout waiting for $name to be healthy"
@@ -234,7 +278,7 @@ check_env_keys(){
     POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB
     NEO4J_PASSWORD
     RABBITMQ_DEFAULT_USER RABBITMQ_DEFAULT_PASS
-    API_SECRET_KEY N8N_ENCRYPTION_KEY GRAFANA_SECURITY_ADMIN_PASSWORD
+    API_SECRET_KEY N8N_ENCRYPTION_KEY N8N_BASIC_AUTH_PASSWORD GRAFANA_SECURITY_ADMIN_PASSWORD
   )
   [[ -f "$ENV_FILE" ]] || { err ".env not found at $ENV_FILE"; }
   local missing=()
@@ -296,7 +340,9 @@ check_http(){
 
 # Verify API JSON health endpoint and fail fast if degraded
 verify_api_health(){
-  local port="${API_HOST_PORT:-8000}"
+  local port="${API_HOST_PORT:-}"
+  if [[ -z "$port" ]]; then port="$(get_dotenv_value API_HOST_PORT)"; fi
+  if [[ -z "$port" ]]; then port="5000"; fi
   local url="http://localhost:${port}/system/health"
   log "Verifying API health at ${url}"
   local body
@@ -408,7 +454,10 @@ summary(){
 
 validate_stack(){
   local ok=0 fail=0
-  if curl -fsS "http://localhost:${API_HOST_PORT:-8000}/system/health" >/dev/null 2>&1; then ok=$((ok+1)); else echo "API health check failed"; fail=$((fail+1)); fi
+  local api_port="${API_HOST_PORT:-}"
+  if [[ -z "$api_port" ]]; then api_port="$(get_dotenv_value API_HOST_PORT)"; fi
+  if [[ -z "$api_port" ]]; then api_port="5000"; fi
+  if curl -fsS "http://localhost:${api_port}/system/health" >/dev/null 2>&1; then ok=$((ok+1)); else echo "API health check failed"; fail=$((fail+1)); fi
   if docker exec enhanced-ai-postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -c "select 1;" >/dev/null 2>&1; then ok=$((ok+1)); else echo "Postgres query failed"; fail=$((fail+1)); fi
   if docker exec enhanced-ai-neo4j cypher-shell -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_PASSWORD:-neo4j}" "RETURN 1;" >/dev/null 2>&1; then ok=$((ok+1)); else echo "Neo4j query failed"; fail=$((fail+1)); fi
   if docker exec enhanced-ai-redis redis-cli PING | grep -q PONG; then ok=$((ok+1)); else echo "Redis PING failed"; fail=$((fail+1)); fi
