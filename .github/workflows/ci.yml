@@ -58,8 +58,8 @@ jobs:
 
       - name: Run Unit & Integration tests
         run: |
-          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category unit --results-dir ./test-results
-          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category integration --results-dir ./test-results
+          bash scripts/enhanced/testing/run-all-tests.sh --category unit --results-dir ./test-results
+          bash scripts/enhanced/testing/run-all-tests.sh --category integration --results-dir ./test-results
 
       - name: Install pytest for Quality Gate
         run: |
@@ -85,8 +85,8 @@ jobs:
         env:
           N8N_BASE_URL: http://localhost:5678
         run: |
-          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category e2e --results-dir ./test-results || true
-          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category performance --results-dir ./test-results || true
+          bash scripts/enhanced/testing/run-all-tests.sh --category e2e --results-dir ./test-results || true
+          bash scripts/enhanced/testing/run-all-tests.sh --category performance --results-dir ./test-results || true
 
       - name: Security scan - Trivy (containers)
         run: |
@@ -102,7 +102,7 @@ jobs:
 
       - name: AI capability tests (non-fatal)
         run: |
-          bash enhanced-ai-agent-os/scripts/testing/run-all-tests.sh --category ai --results-dir ./test-results || true
+          bash scripts/enhanced/testing/run-all-tests.sh --category ai --results-dir ./test-results || true
 
       - name: Archive test results
         if: always()
