@@ -56,24 +56,24 @@ run_suite() {
 }
 
 case "$CATEGORY" in
-  all|unit) run_suite "enhanced-ai-agent-os/tests/unit";;
+  all|unit) run_suite "tests/unit";;
 esac
 case "$CATEGORY" in
-  all|integration) run_suite "enhanced-ai-agent-os/tests/integration";;
+  all|integration) run_suite "tests/integration";;
 esac
 case "$CATEGORY" in
-  all|e2e) run_suite "enhanced-ai-agent-os/tests/e2e";;
+  all|e2e) run_suite "tests/e2e";;
  esac
 case "$CATEGORY" in
-  all|performance) run_suite "enhanced-ai-agent-os/tests/performance";;
+  all|performance) run_suite "tests/performance";;
  esac
 if [[ "$CATEGORY" == "all" || "$CATEGORY" == "performance" ]]; then
-  if [[ -f "enhanced-ai-agent-os/scripts/testing/aggregate-metrics.sh" ]]; then
-    bash enhanced-ai-agent-os/scripts/testing/aggregate-metrics.sh --results-dir "$RESULTS_DIR" | tee -a "$SUMMARY_FILE" || true
+  if [[ -f "scripts/enhanced/testing/aggregate-metrics.sh" ]]; then
+    bash scripts/enhanced/testing/aggregate-metrics.sh --results-dir "$RESULTS_DIR" | tee -a "$SUMMARY_FILE" || true
   fi
 fi
 case "$CATEGORY" in
-  all|ai) run_suite "enhanced-ai-agent-os/tests/ai-capabilities";;
+  all|ai) run_suite "tests/ai-capabilities";;
  esac
 
 info "All done. Summary: $SUMMARY_FILE"

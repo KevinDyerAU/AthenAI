@@ -8,6 +8,8 @@ from api.extensions import db
 @pytest.fixture()
 def app(monkeypatch):
     os.environ["FLASK_ENV"] = "development"
+    os.environ["TESTING"] = "true"
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     app = create_app()
     app.config.update(
         TESTING=True,
