@@ -1,0 +1,315 @@
+openapi: 3.0.3
+info:
+  title: Enhanced AI Agent OS API
+  version: 1.0.0
+  description: |
+    REST API and webhook endpoints for Planning, Execution, and Quality Assurance agents running in n8n.
+    This specification documents management endpoints and agent webhooks for external integrations.
+servers:
+  - url: http://localhost:5678
+    description: Local n8n
+  - url: https://api.example.com
+    description: Production
+tags:
+  - name: Workflows
+    description: Manage n8n workflows
+  - name: Agents
+    description: Agent webhook endpoints
+  - name: Metadata
+    description: Service metadata
+paths:
+  /rest/workflows:
+    get:
+      tags: [Workflows]
+      summary: List workflows
+      security:
+        - ApiKeyAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: List of workflows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowSummary'
+    post:
+      tags: [Workflows]
+      summary: Create a workflow
+      security:
+        - ApiKeyAuth: []
+        - BasicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDetail'
+  /rest/workflows/{id}:
+    get:
+      tags: [Workflows]
+      summary: Get workflow by ID
+      security:
+        - ApiKeyAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Workflow details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDetail'
+  /rest/workflows/{id}/activate:
+    post:
+      tags: [Workflows]
+      summary: Activate or deactivate workflow
+      security:
+        - ApiKeyAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                activate:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated activation state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  active: { type: boolean }
+  /webhook/planning-agent:
+    post:
+      tags: [Agents]
+      summary: Planning Agent webhook
+      description: Submit planning inputs and receive synthesized plan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningRequest'
+            examples:
+              minimal:
+                value:
+                  project:
+                    name: Website Revamp
+                    methodology: agile
+                  tasks:
+                    - id: T1
+                      skills: [design]
+                  resources:
+                    - name: Alice
+                      skills: [design]
+                      capacity: 2
+      responses:
+        '200':
+          description: Planning response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningResponse'
+  /webhook/execution-agent:
+    post:
+      tags: [Agents]
+      summary: Execution Agent webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutionRequest'
+      responses:
+        '200':
+          description: Execution orchestration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+  /webhook/quality-assurance-agent:
+    post:
+      tags: [Agents]
+      summary: Quality Assurance Agent webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QARequest'
+      responses:
+        '200':
+          description: Quality report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QAResponse'
+  /health:
+    get:
+      tags: [Metadata]
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-N8N-API-KEY
+    BasicAuth:
+      type: http
+      scheme: basic
+  schemas:
+    WorkflowSummary:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        active: { type: boolean }
+    WorkflowCreate:
+      type: object
+      required: [name, nodes]
+      properties:
+        name: { type: string }
+        nodes:
+          type: array
+          items: { type: object }
+        connections:
+          type: object
+    WorkflowDetail:
+      allOf:
+        - $ref: '#/components/schemas/WorkflowSummary'
+        - type: object
+          properties:
+            nodes:
+              type: array
+              items: { type: object }
+            connections:
+              type: object
+            settings:
+              type: object
+    PlanningRequest:
+      type: object
+      properties:
+        project:
+          type: object
+          properties:
+            name: { type: string }
+            methodology: { type: string }
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              skills:
+                type: array
+                items: { type: string }
+        resources:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              skills:
+                type: array
+                items: { type: string }
+              capacity: { type: integer }
+    PlanningResponse:
+      type: object
+      properties:
+        plan:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          example: ok
+    ExecutionRequest:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              deps:
+                type: array
+                items: { type: string }
+        concurrency:
+          type: integer
+    ExecutionResponse:
+      type: object
+      properties:
+        batches:
+          type: array
+          items:
+            type: array
+            items: { type: string }
+        policies:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+    QARequest:
+      type: object
+      properties:
+        artifacts:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              content: { type: string }
+        standards:
+          type: array
+          items: { type: string }
+    QAResponse:
+      type: object
+      properties:
+        qualityReport:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+security:
+  - ApiKeyAuth: []
+externalDocs:
+  description: Operations and testing docs
+  url: ./enhanced-ai-agent-os/documentation
