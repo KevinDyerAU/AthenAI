@@ -70,6 +70,8 @@ jobs:
         env:
           DISABLE_PERF: true
           PYTHONPATH: ${{ github.workspace }}
+          TESTING: true
+          DATABASE_URL: sqlite:///:memory:
         run: |
           python scripts/testing/quality_gate.py
 

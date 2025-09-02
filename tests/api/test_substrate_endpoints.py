@@ -27,6 +27,8 @@ pytestmark = pytest.mark.skipif(not _neo4j_available(), reason="Neo4j not availa
 
 @pytest.fixture(scope="module")
 def app():
+    os.environ["TESTING"] = "true"
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     app = create_app()
     app.config.update(TESTING=True)
     return app

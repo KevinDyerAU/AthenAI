@@ -10,6 +10,8 @@ from api.models import Agent, AgentRun
 def app(monkeypatch):
     os.environ["FLASK_ENV"] = "development"
     os.environ["INTEGRATION_SECRET"] = "secret123"
+    os.environ["TESTING"] = "true"
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     app = create_app()
     app.config.update(
         TESTING=True,
