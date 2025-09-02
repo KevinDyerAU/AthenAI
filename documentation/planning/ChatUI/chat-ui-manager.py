@@ -115,7 +115,7 @@ class ChatUIManager:
         except Exception:
             return False
     
-    def find_available_port(self, start_port: int = None, max_port: int = None) -> Optional[int]:
+    def find_available_port(self, start_port: Optional[int] = None, max_port: Optional[int] = None) -> Optional[int]:
         """Find an available port within the specified range"""
         start_port = start_port or self.config.get('default_port', self.default_port)
         max_port = max_port or self.config.get('max_port', self.max_port)
@@ -425,7 +425,7 @@ class ChatUIManager:
         else:
             self.print_colored("❌ Chat UI is not running", Colors.RED)
     
-    def open_browser(self, port: int = None):
+    def open_browser(self, port: Optional[int] = None):
         """Open chat UI in browser"""
         if not port:
             # Try to find running port
