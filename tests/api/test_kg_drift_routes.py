@@ -157,11 +157,26 @@ def test_quality_snapshot_records_and_emits(app, client, monkeypatch):
                 return [{"c": 10}]
             elif "count(r)" in cypher:
                 return [{"c": 5}]
+            elif "avg(r.confidence)" in cypher or "avg(coalesce(r.confidence" in cypher:
+                return [{"avgc": 0.85}]
+            elif "max(coalesce(r.lastUpdated" in cypher:
+                return [{"mx": 1640995200000}]
+            elif "WHERE NOT (e)--() RETURN e.id AS id" in cypher:
+                return []
+            elif "MATCH (s:Entity)-[r:RELATED]->(o:Entity)" in cypher:
+                return []
             elif "WHERE NOT" in cypher:
                 return [{"c": 0}]
+            elif "SHOW CONSTRAINTS" in cypher:
+                return []
+            elif "CALL db.indexes()" in cypher:
+                return []
+            elif "IS NULL" in cypher:
+                return []
             return []
     monkeypatch.setattr("api.services.knowledge_drift.get_client", lambda: MockClient())
     monkeypatch.setattr("api.utils.neo4j_client.get_client", lambda: MockClient())
+    monkeypatch.setattr("api.utils.kg_schema.get_client", lambda: MockClient())
     
     # Mock record to no-op
     from api.services import knowledge_drift as kd
