@@ -1,5 +1,6 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @custom-variant dark (&:is(.dark *));
 
@@ -150,7 +151,7 @@
   }
   
   .chat-sidebar {
-    @apply w-80 bg-sidebar border-r border-sidebar-border flex flex-col;
+    @apply w-80 bg-slate-50 border-r border-slate-200 flex flex-col;
     transition: width 0.3s ease-in-out;
   }
   
@@ -254,7 +255,7 @@
   
   /* Knowledge Panel Styles */
   .knowledge-panel {
-    @apply w-80 bg-sidebar border-l border-sidebar-border flex flex-col;
+    @apply w-80 bg-slate-50 border-l border-slate-200 flex flex-col;
   }
   
   .knowledge-item {
