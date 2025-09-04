@@ -12,6 +12,12 @@ DO $$ BEGIN
   EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'pgcrypto extension not found; skipping'; END;
 END $$;
 
+-- Query performance tracking
+DO $$ BEGIN
+  BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements';
+  EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'pg_stat_statements extension not found; ensure shared_preload_libraries is set; skipping'; END;
+END $$;
+
 DO $$ BEGIN
   BEGIN EXECUTE 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"';
   EXCEPTION WHEN undefined_file THEN RAISE NOTICE 'uuid-ossp extension not found; skipping'; END;

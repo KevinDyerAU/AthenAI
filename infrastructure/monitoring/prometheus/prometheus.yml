@@ -27,14 +27,13 @@ scrape_configs:
 
   - job_name: 'postgres-exporter'
     static_configs:
-      - targets: ['postgres:5432']
+      - targets: ['postgres-exporter:9187']
     scrape_interval: 10s
 
   - job_name: 'neo4j'
     static_configs:
-      - targets: ['neo4j:7474']
+      - targets: ['neo4j:2004']
     scrape_interval: 10s
-    metrics_path: '/metrics'
 
   - job_name: 'rabbitmq'
     static_configs:
@@ -53,11 +52,6 @@ scrape_configs:
     scrape_interval: 10s
     metrics_path: '/metrics'
 
-  - job_name: 'unstructured-worker'
-    static_configs:
-      - targets: ['unstructured-worker:8080']
-    scrape_interval: 10s
-    metrics_path: '/metrics'
 
   - job_name: 'grafana'
     static_configs:
@@ -71,8 +65,45 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: '/metrics'
 
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 10s
+
   - job_name: 'alertmanager'
     static_configs:
       - targets: ['alertmanager:9093']
     scrape_interval: 30s
     metrics_path: '/metrics'
+
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://api-service:5000/system/health
+          - http://n8n:5678/healthz
+          - http://grafana:3000/api/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: 'agent-lifecycle-manager'
+    static_configs:
+      - targets: ['agent-lifecycle-manager:8001']
+    scrape_interval: 15s
+
+  - job_name: 'knowledge-drift-detector'
+    static_configs:
+      - targets: ['knowledge-drift-detector:8002']
+    scrape_interval: 30s
+
+  - job_name: 'self-healing-monitor'
+    static_configs:
+      - targets: ['self-healing-monitor:8003']
+    scrape_interval: 15s

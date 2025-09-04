@@ -32,3 +32,15 @@ datasources:
       maxIdleConns: 2
       connMaxLifetime: 14400
     editable: true
+
+  - name: Neo4j
+    type: kniepdennis-neo4j-datasource
+    access: proxy
+    isDefault: false
+    editable: true
+    jsonData:
+      url: bolt://neo4j:7687
+      database: neo4j
+      username: neo4j
+    secureJsonData:
+      password: ${NEO4J_PASSWORD}

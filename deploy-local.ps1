@@ -533,9 +533,9 @@ function Invoke-PhaseMonitoring {
   Write-Log "Starting monitoring stack"
   try {
     if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
-      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector cadvisor postgres-exporter
     } else {
-      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector cadvisor postgres-exporter
     }
   } catch { Write-Log $_.Exception.Message 'WARN' }
   $gp = ${env:GRAFANA_PORT}; if (-not $gp) { $gp = 3000 }

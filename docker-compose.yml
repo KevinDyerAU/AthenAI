@@ -11,6 +11,16 @@ services:
     image: pgvector/pgvector:pg15
     container_name: enhanced-ai-postgres
     restart: unless-stopped
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "track_io_timing=on"
+      - "-c"
+      - "track_activity_query_size=2048"
+      - "-c"
+      - "max_connections=${POSTGRES_MAX_CONNECTIONS:-200}"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-enhanced_ai_os}
       POSTGRES_USER: ${POSTGRES_USER:-ai_agent_user}
@@ -41,16 +51,42 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Blackbox Exporter for HTTP/TCP probing
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: enhanced-ai-blackbox
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/blackbox/blackbox.yml'
+    volumes:
+      - ./documentation/planning/mon/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    ports:
+      - "9115:9115"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:9115/metrics || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # =============================================================================
   # CONSCIOUSNESS SUBSTRATE - Neo4j Graph Database
   # =============================================================================
   neo4j:
-    image: neo4j:5.15-community
+    image: neo4j:5.15-enterprise
     container_name: enhanced-ai-neo4j
     restart: unless-stopped
     environment:
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
       NEO4J_AUTH: ${NEO4J_AUTH}
-      NEO4J_PLUGINS: ${NEO4J_PLUGINS:-[]}
+      NEO4J_PLUGINS: ${NEO4J_PLUGINS:-["apoc", "graph-data-science", "n10s"]}
       NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_INITIAL_SIZE:-256m}
       NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_MAX_SIZE:-512m}
       NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE_SIZE:-256m}
@@ -64,6 +100,10 @@ services:
       NEO4J_server_logs_query_parameter__logging__enabled: true
       NEO4J_server_config_strict__validation_enabled: false
       NEO4J_server_cypher_default__temporal__accessor: legacy
+      # Expose Prometheus metrics on port 2004 (Neo4j 5.x settings)
+      NEO4J_server_metrics_enabled: ${NEO4J_server_metrics_enabled:-true}
+      NEO4J_server_metrics_prometheus_enabled: ${NEO4J_server_metrics_prometheus_enabled:-true}
+      NEO4J_server_metrics_prometheus_endpoint: ${NEO4J_server_metrics_prometheus_endpoint:-0.0.0.0:2004}
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
@@ -74,6 +114,7 @@ services:
     ports:
       - "${NEO4J_HTTP_PORT:-7474}:7474"
       - "${NEO4J_BOLT_PORT:-7687}:7687"
+      - "2004:2004"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7474/"]
       interval: 30s
@@ -297,7 +338,7 @@ services:
         max-file: "3"
 
   grafana:
-    image: grafana/grafana:10.2.0
+    image: grafana/grafana:10.4.3
     container_name: enhanced-ai-grafana
     restart: unless-stopped
     environment:
@@ -307,10 +348,13 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: ${GRAFANA_AUTH_ANONYMOUS_ENABLED:-false}
       GF_LOG_LEVEL: ${GRAFANA_LOG_LEVEL:-info}
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/ai-agent-overview.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards-extra/system_overview.json
       GF_FEATURE_TOGGLES_ENABLE: publicDashboards
       GF_ANALYTICS_REPORTING_ENABLED: false
       GF_ANALYTICS_CHECK_FOR_UPDATES: false
+      # Only install needed external plugins. PostgreSQL is built-in; RabbitMQ paneling uses Prometheus metrics.
+      # Neo4j plugin per official page: https://grafana.com/grafana/plugins/kniepdennis-neo4j-datasource/
+      GF_INSTALL_PLUGINS: kniepdennis-neo4j-datasource
       GF_USERS_ALLOW_SIGN_UP: false
       GF_USERS_ALLOW_ORG_CREATE: false
       GF_USERS_AUTO_ASSIGN_ORG: true
@@ -383,6 +427,57 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    networks:
+      - enhanced-ai-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Container metrics exporter (works best on Linux; on Docker Desktop paths map inside VM)
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: enhanced-ai-cadvisor
+    restart: unless-stopped
+    privileged: true
+    command:
+      - --housekeeping_interval=10s
+      - --docker_only=true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - enhanced-ai-network
+    profiles:
+      - linux
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL Prometheus exporter
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: enhanced-ai-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-ai_agent_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-enhanced_ai_os}?sslmode=disable
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "true"
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yml
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9187:9187"
+    volumes:
+      - ./infrastructure/monitoring/prometheus/postgres-queries.yml:/etc/postgres_exporter/queries.yml:ro
     networks:
       - enhanced-ai-network
     logging:
@@ -558,12 +653,16 @@ services:
     command: |
       bash -lc '
       set -e
-      pip install neo4j pika requests
+      pip install neo4j pika requests prometheus_client
       python - <<"PY"
       import time
-      print("Agent Lifecycle Manager placeholder running")
+      from prometheus_client import start_http_server, Gauge
+      g = Gauge("agent_heartbeat", "Heartbeat for agent", ["agent"]) 
+      start_http_server(8001)
+      print("Agent Lifecycle Manager metrics server on :8001")
       while True:
-          time.sleep(60)
+          g.labels("agent-lifecycle-manager").set(1)
+          time.sleep(10)
       PY
       '
     env_file:
@@ -597,12 +696,16 @@ services:
     command: |
       bash -lc '
       set -e
-      pip install neo4j pika
+      pip install neo4j pika prometheus_client
       python - <<"PY"
       import time
-      print("Knowledge Drift Detector placeholder running")
+      from prometheus_client import start_http_server, Gauge
+      g = Gauge("agent_heartbeat", "Heartbeat for agent", ["agent"]) 
+      start_http_server(8002)
+      print("Knowledge Drift Detector metrics server on :8002")
       while True:
-          time.sleep(300)
+          g.labels("knowledge-drift-detector").set(1)
+          time.sleep(10)
       PY
       '
     environment:
@@ -629,12 +732,16 @@ services:
     command: |
       bash -lc '
       set -e
-      pip install pika requests
+      pip install pika requests prometheus_client
       python - <<"PY"
       import time
-      print("Self-Healing Monitor placeholder running")
+      from prometheus_client import start_http_server, Gauge
+      g = Gauge("agent_heartbeat", "Heartbeat for agent", ["agent"]) 
+      start_http_server(8003)
+      print("Self-Healing Monitor metrics server on :8003")
       while True:
-          time.sleep(60)
+          g.labels("self-healing-monitor").set(1)
+          time.sleep(10)
       PY
       '
     environment:

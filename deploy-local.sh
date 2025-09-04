@@ -187,6 +187,12 @@ ensure_secrets(){
   ensure_secret_nonempty WEBHOOK_SECRET 32
   ensure_secret_nonempty N8N_BASIC_AUTH_PASSWORD 32
   ensure_secret_nonempty DB_PASSWORD 32
+  
+  # Neo4j Prometheus metrics (make sure enabled and bound to 2004)
+  # These map to docker-compose.yml environment for service 'neo4j'
+  set_env_if_missing NEO4J_server_metrics_enabled "true"
+  set_env_if_missing NEO4J_server_metrics_prometheus_enabled "true"
+  set_env_if_missing NEO4J_server_metrics_prometheus_endpoint 0.0.0.0:2004
   normalize_env_file
 }
 
@@ -400,14 +406,18 @@ phase_migrations(){
 }
 
 phase_monitoring(){
-  log "Starting monitoring: prometheus grafana loki promtail alertmanager otel-collector"
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS prometheus grafana loki promtail alertmanager otel-collector || true
+  log "Starting monitoring: prometheus grafana loki promtail alertmanager otel-collector blackbox-exporter cadvisor postgres-exporter"
+  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS prometheus grafana loki promtail alertmanager otel-collector blackbox-exporter cadvisor postgres-exporter || true
   # Lightweight HTTP checks on common ports
   local gp="${GRAFANA_PORT:-3000}" pp="${PROMETHEUS_PORT:-9090}" lp="${LOKI_PORT:-3100}" ap="${ALERTMANAGER_PORT:-9093}"
   check_http "Grafana" "http://localhost:${gp}/api/health"
   check_http "Prometheus" "http://localhost:${pp}/-/ready"
   check_http "Alertmanager" "http://localhost:${ap}/-/ready"
   check_http "Loki" "http://localhost:${lp}/ready"
+  # Exporters
+  check_http "Postgres Exporter" "http://localhost:9187/metrics"
+  check_http "Blackbox Exporter" "http://localhost:9115/metrics"
+  check_http "cAdvisor" "http://localhost:8080/metrics"
 }
 
 phase_orchestration(){

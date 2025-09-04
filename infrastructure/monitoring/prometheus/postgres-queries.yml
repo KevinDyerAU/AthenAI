@@ -1,0 +1,42 @@
+# Custom queries for postgres_exporter to include pg_stat_statements metrics
+# Reference: https://github.com/prometheus-community/postgres_exporter#custom-queries
+pg_stat_statements:
+  query: |
+    SELECT
+      pgss.userid::int8 as user_id,
+      rolname as user_name,
+      d.datid::int8 as db_id,
+      d.datname as db_name,
+      pgss.calls::int8 as calls,
+      pgss.total_time/1000.0 as total_time_seconds,
+      pgss.mean_time/1000.0 as mean_time_seconds,
+      pgss.rows::int8 as rows
+    FROM pg_stat_statements pgss
+    JOIN pg_roles r ON r.oid = pgss.userid
+    JOIN pg_database d ON d.oid = pgss.dbid
+    WHERE d.datname = current_database();
+  metrics:
+    - user_id:
+        usage: LABEL
+        description: Role OID executing the statement
+    - user_name:
+        usage: LABEL
+        description: Role name executing the statement
+    - db_id:
+        usage: LABEL
+        description: Database OID
+    - db_name:
+        usage: LABEL
+        description: Database name
+    - calls:
+        usage: COUNTER
+        description: Number of times executed
+    - total_time_seconds:
+        usage: GAUGE
+        description: Total time spent in the statement, in seconds
+    - mean_time_seconds:
+        usage: GAUGE
+        description: Average time per statement, in seconds
+    - rows:
+        usage: COUNTER
+        description: Total rows retrieved or affected by the statement

@@ -1,7 +1,6 @@
 {
-  "dashboard": {
-    "id": null,
-    "title": "NeoV3 - Document Processing (Unstructured.io)",
+  "id": null,
+  "title": "NeoV3 - Document Processing (Unstructured.io)",
     "tags": ["neov3", "document-processing", "unstructured"],
     "style": "dark",
     "timezone": "browser",
@@ -157,5 +156,4 @@
     "schemaVersion": 37,
     "version": 0,
     "weekStart": ""
-  }
 }
