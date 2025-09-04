@@ -1,5 +1,5 @@
 ﻿{
-  "__inputs": [],
+  
   "title": "AI Agents Performance",
   "panels": [
     {
@@ -57,4 +57,7 @@
   "templating": {"list": []},
   "schemaVersion": 36
 }
+
+
+
 
