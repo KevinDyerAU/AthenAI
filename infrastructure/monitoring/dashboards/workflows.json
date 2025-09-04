@@ -1,4 +1,4 @@
-{
+﻿{
   "title": "Workflow Execution Metrics",
   "panels": [
     {
@@ -27,3 +27,4 @@
   ],
   "schemaVersion": 36
 }
+

@@ -1,4 +1,4 @@
-{
+﻿{
   "title": "Agent Coordination",
   "uid": "neo-agent-coord",
   "schemaVersion": 39,
@@ -32,3 +32,4 @@
     }
   ]
 }
+
