@@ -149,7 +149,7 @@ ensure_secret_nonempty(){
       printf '%s\n' "${key}=${generated}" >>"$ENV_FILE"; log "Initialized ${key} in .env (fresh)"; normalize_env_file;
     else
       # If empty (e.g., KEY=, KEY="", KEY='') replace with generated
-      if grep -qE "^\s*${key}\s*=\s*(""|''|\s*)$" "$ENV_FILE"; then
+      if grep -qE "^\s*${key}\s*=\s*(\"\"|''|\s*)$" "$ENV_FILE"; then
         replace_env_value "$key" "$generated"
       fi
     fi
@@ -406,8 +406,22 @@ phase_migrations(){
 }
 
 phase_monitoring(){
-  log "Starting monitoring: prometheus grafana loki promtail alertmanager otel-collector blackbox-exporter cadvisor postgres-exporter"
-  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS prometheus grafana loki promtail alertmanager otel-collector blackbox-exporter cadvisor postgres-exporter || true
+  # Configure conditional scrape targets for cAdvisor (file_sd)
+  local targets_dir="$SCRIPT_DIR/infrastructure/monitoring/prometheus/targets"
+  local cadvisor_sd="$targets_dir/cadvisor.yml"
+  mkdir -p "$targets_dir"
+  if [[ ",${COMPOSE_PROFILES}," == *",linux,"* ]]; then
+    cat > "$cadvisor_sd" <<'YAML'
+ - targets: ['cadvisor:8080']
+YAML
+    log "Enabled cAdvisor scrape via file_sd (linux profile active) -> $cadvisor_sd"
+  else
+    if [[ -f "$cadvisor_sd" ]]; then rm -f "$cadvisor_sd"; fi
+    log "Disabled cAdvisor scrape (linux profile not active); removed $cadvisor_sd"
+  fi
+
+  log "Starting monitoring: prometheus grafana loki promtail alertmanager otel-collector blackbox-exporter cadvisor node-exporter postgres-exporter self-healing-monitor knowledge-drift-detector agent-lifecycle-manager"
+  docker_compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$OVERRIDE_FILE" -f "$OBS_OVERRIDE_FILE" up -d $DOCKER_UP_ARGS prometheus grafana loki promtail alertmanager otel-collector blackbox-exporter cadvisor node-exporter postgres-exporter self-healing-monitor knowledge-drift-detector agent-lifecycle-manager || true
   # Lightweight HTTP checks on common ports
   local gp="${GRAFANA_PORT:-3000}" pp="${PROMETHEUS_PORT:-9090}" lp="${LOKI_PORT:-3100}" ap="${ALERTMANAGER_PORT:-9093}"
   check_http "Grafana" "http://localhost:${gp}/api/health"
