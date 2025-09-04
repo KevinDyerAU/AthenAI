@@ -12,6 +12,11 @@ ENV_FILE="$PROJECT_DIR/.env"
 ENV_EXAMPLE_CANDIDATES=("$PROJECT_DIR/.env.example" "$PROJECT_DIR/unified.env.example")
 LOG_FILE="$PROJECT_DIR/deployment.local.log"
 
+# Profiles: default to linux in bash (WSL/Linux shell assumed)
+if [[ -z "${COMPOSE_PROFILES:-}" ]]; then
+  export COMPOSE_PROFILES="linux"
+fi
+
 # Temp deployment root (per-run)
 TIMESTAMP="$(date +'%Y%m%d-%H%M%S')"
 DEPLOY_TMP_ROOT="$PROJECT_DIR/deploy_tmp/$TIMESTAMP"
@@ -431,7 +436,6 @@ YAML
   # Exporters
   check_http "Postgres Exporter" "http://localhost:9187/metrics"
   check_http "Blackbox Exporter" "http://localhost:9115/metrics"
-  check_http "cAdvisor" "http://localhost:8080/metrics"
 }
 
 phase_orchestration(){

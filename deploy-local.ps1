@@ -27,6 +27,10 @@ $LogFile     = Join-Path $Script:Root "deployment.local.log"
 $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $DeployTmpRoot = Join-Path $Script:Root (Join-Path "deploy_tmp" $Timestamp)
 $OverrideFile = Join-Path $DeployTmpRoot "docker-compose.override.yml"
+$ObsOverrideFile = Join-Path $Script:Root "docker-compose.override.observability.yml"
+
+# Profiles: default to no linux on Windows/PowerShell
+if (-not $env:COMPOSE_PROFILES) { $env:COMPOSE_PROFILES = "" }
 
 function Write-Log([string]$msg, [string]$level = "INFO") {
   $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
@@ -90,18 +94,18 @@ function Invoke-Check {
   if (Test-Path $EnvFile) { $envOk = Test-EnvKeys } else { Write-Log ".env not found at $EnvFile" 'ERROR' }
   try {
     if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
-      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile config | Out-Null
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $ObsOverrideFile config | Out-Null
     } else {
-      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile config | Out-Null
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $ObsOverrideFile config | Out-Null
     }
     Write-Log "docker-compose config OK" 'SUCCESS'
   } catch { Write-Log "docker-compose config failed: $($_.Exception.Message)" 'ERROR' }
   Write-Host "`n=== existing containers (if any) ===";
   try {
     if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
-      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile ps
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $ObsOverrideFile ps
     } else {
-      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile ps
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $ObsOverrideFile ps
     }
   } catch {}
   Write-Host "`n=== health (if running) ==="; @(
@@ -273,6 +277,11 @@ function Initialize-Secrets {
   Set-Env-IfMissing -key 'N8N_BASIC_AUTH_ACTIVE' -value 'true'
   Set-Env-IfMissing -key 'N8N_BASIC_AUTH_USER' -value 'admin'
   Set-Env-IfMissing -key 'N8N_BASIC_AUTH_PASSWORD' -value (New-SecretString 32)
+
+  # Neo4j Prometheus metrics (enable and bind to 2004) to match bash script
+  Set-Env-IfMissing -key 'NEO4J_server_metrics_enabled' -value 'true'
+  Set-Env-IfMissing -key 'NEO4J_server_metrics_prometheus_enabled' -value 'true'
+  Set-Env-IfMissing -key 'NEO4J_server_metrics_prometheus_endpoint' -value '0.0.0.0:2004'
 }
 
 function Initialize-Directories {
@@ -498,9 +507,9 @@ function Wait-Healthy([string]$name, [int]$seconds = 360) {
 function Invoke-PhaseCore {
   Write-Log "Starting core: postgres, neo4j, rabbitmq"
   if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
-    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs postgres neo4j rabbitmq
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile -f $ObsOverrideFile up -d $DockerUpArgs postgres neo4j rabbitmq redis
   } else {
-    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs postgres neo4j rabbitmq
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile -f $ObsOverrideFile up -d $DockerUpArgs postgres neo4j rabbitmq redis
   }
   Wait-Healthy 'enhanced-ai-postgres' 300
   Wait-Healthy 'enhanced-ai-neo4j' 480
@@ -512,8 +521,8 @@ function Invoke-PhaseUnstructured {
   if (-not $UseUnstructured) { return }
   if (-not (Test-Path $UnstructuredComposeFile)) { Write-Log "-Unstructured specified but overlay not found at $UnstructuredComposeFile; skipping" 'WARN'; return }
   Write-Log "Starting Unstructured worker"
-  try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile build unstructured-worker | Out-Null } catch {}
-  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs unstructured-worker
+  try { Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile -f $ObsOverrideFile build unstructured-worker | Out-Null } catch {}
+  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile -f $ObsOverrideFile up -d $DockerUpArgs unstructured-worker
   try { Wait-Healthy 'neov3-unstructured-worker' 240 } catch { Write-Log "Unstructured worker not healthy yet" 'WARN' }
 }
 
@@ -531,11 +540,23 @@ function Invoke-DatabaseMigrations {
 
 function Invoke-PhaseMonitoring {
   Write-Log "Starting monitoring stack"
+  # Configure conditional scrape targets for cAdvisor (file_sd)
+  $targetsDir = Join-Path $Script:Root "infrastructure/monitoring/prometheus/targets"
+  $cadvisorSd = Join-Path $targetsDir "cadvisor.yml"
+  if (-not (Test-Path $targetsDir)) { New-Item -ItemType Directory -Path $targetsDir -Force | Out-Null }
+  if ($env:COMPOSE_PROFILES -match '(?:^|,)linux(?:,|$)') {
+    Set-Content -LiteralPath $cadvisorSd -Value "- targets: ['cadvisor:8080']`n" -NoNewline
+    Write-Log ("Enabled cAdvisor scrape via file_sd (linux profile active) -> {0}" -f $cadvisorSd)
+  } else {
+    if (Test-Path $cadvisorSd) { Remove-Item -LiteralPath $cadvisorSd -Force }
+    Write-Log ("Disabled cAdvisor scrape (linux profile not active); removed {0}" -f $cadvisorSd)
+  }
+
   try {
     if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
-      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector cadvisor postgres-exporter
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile -f $ObsOverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector blackbox-exporter cadvisor node-exporter postgres-exporter self-healing-monitor knowledge-drift-detector agent-lifecycle-manager
     } else {
-      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector cadvisor postgres-exporter
+      Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile -f $ObsOverrideFile up -d $DockerUpArgs prometheus grafana loki promtail alertmanager otel-collector blackbox-exporter cadvisor node-exporter postgres-exporter self-healing-monitor knowledge-drift-detector agent-lifecycle-manager
     }
   } catch { Write-Log $_.Exception.Message 'WARN' }
   $gp = ${env:GRAFANA_PORT}; if (-not $gp) { $gp = 3000 }
@@ -546,22 +567,25 @@ function Invoke-PhaseMonitoring {
   Test-HttpEndpoint -label 'Prometheus' -url "http://localhost:$pp/-/ready"
   Test-HttpEndpoint -label 'Alertmanager' -url "http://localhost:$ap/-/ready"
   Test-HttpEndpoint -label 'Loki' -url "http://localhost:$lp/ready"
+  # Exporters
+  Test-HttpEndpoint -label 'Postgres Exporter' -url "http://localhost:9187/metrics"
+  Test-HttpEndpoint -label 'Blackbox Exporter' -url "http://localhost:9115/metrics"
 }
 
 function Invoke-PhaseOrchestration {
   Write-Log "Starting orchestration: n8n"
-  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs n8n
+  Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile -f $ObsOverrideFile up -d $DockerUpArgs n8n
   try { Wait-Healthy 'enhanced-ai-n8n' 420 } catch { Write-Log "n8n not healthy yet" 'WARN' }
 }
 
 function Invoke-PhaseAPI {
   Write-Log "Building and starting API"
   if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
-    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile build api-service
-    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile up -d $DockerUpArgs api-service
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile -f $ObsOverrideFile build api-service
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile -f $ObsOverrideFile up -d $DockerUpArgs api-service
   } else {
-    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile build api-service
-    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile up -d $DockerUpArgs api-service
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile -f $ObsOverrideFile build api-service
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile -f $ObsOverrideFile up -d $DockerUpArgs api-service
   }
   Wait-Healthy 'enhanced-ai-agent-api' 300
   # Extra verification from host perspective
@@ -571,9 +595,9 @@ function Invoke-PhaseAPI {
 function Write-Summary {
   Write-Host "`n=== docker compose ps ==="
   if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
-    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile ps
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile -f $ObsOverrideFile ps
   } else {
-    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile ps
+    Dc --project-directory $Script:Root --env-file $EnvFile -f $ComposeFile -f $OverrideFile -f $ObsOverrideFile ps
   }
   Write-Host "`n=== health summary ==="
   @(
@@ -606,9 +630,9 @@ if (-not $SkipPull) {
   Write-Log "docker compose pull"
   try {
     if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
-      Dc --project-directory $Script:Root -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile --env-file $EnvFile pull | Out-Null
+      Dc --project-directory $Script:Root -f $ComposeFile -f $UnstructuredComposeFile -f $OverrideFile -f $ObsOverrideFile --env-file $EnvFile pull | Out-Null
     } else {
-      Dc --project-directory $Script:Root -f $ComposeFile -f $OverrideFile --env-file $EnvFile pull | Out-Null
+      Dc --project-directory $Script:Root -f $ComposeFile -f $OverrideFile -f $ObsOverrideFile --env-file $EnvFile pull | Out-Null
     }
   } catch { Write-Log $_.Exception.Message 'WARN' }
 }
