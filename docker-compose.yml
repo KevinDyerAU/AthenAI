@@ -193,7 +193,7 @@ services:
   # ORCHESTRATION PLATFORM - n8n with Built-in AI Capabilities
   # =============================================================================
   n8n:
-    image: n8nio/n8n:1.64.0
+    image: n8nio/n8n:${N8N_IMAGE_TAG:-stable}
     container_name: enhanced-ai-n8n
     restart: unless-stopped
     env_file:

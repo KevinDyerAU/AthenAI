@@ -398,6 +398,47 @@ The local deployment script performs the following operations:
 6. **Monitoring Setup**: Configures Prometheus, Grafana, and logging infrastructure
 7. **Validation Testing**: Runs basic connectivity and functionality tests
 
+#### Local Deployment Flow (Detailed)
+
+The local scripts orchestrate the stack in deterministic phases to ensure dependencies are ready before proceeding. The main flow now runs in the following order:
+
+```
+phase_core → phase_unstructured → phase_migrations → phase_monitoring → phase_orchestration → phase_workflows → phase_api → run_smoke_tests → summary
+```
+
+- `phase_core`: Starts core infrastructure (databases, cache, message queue).
+- `phase_unstructured`: Starts Unstructured worker services when enabled.
+- `phase_migrations`: Applies database and graph migrations.
+- `phase_monitoring`: Brings up Prometheus, Grafana, and related exporters.
+- `phase_orchestration`: Starts n8n workflow engine and waits for health.
+- `phase_workflows`: Loads and activates n8n workflows via `scripts/load-workflows.sh`. Pulls `N8N_BASIC_AUTH_USER`/`N8N_BASIC_AUTH_PASSWORD` from the environment or `.env` (defaults user to `admin`). Skips gracefully if password is not set.
+- `phase_api`: Builds and starts the API service, then verifies `/system/health`.
+- `run_smoke_tests`: Runs `scripts/testing/smoke-tests.sh` to validate key endpoints and containers (API, Grafana, Prometheus, n8n, Postgres, Neo4j, Redis, RabbitMQ).
+- `summary`: Prints a compose and health summary for quick diagnostics.
+
+#### Cross-platform robustness
+
+To improve Windows + macOS/Linux compatibility:
+
+- Scripts like `scripts/load-workflows.sh` and `scripts/testing/smoke-tests.sh` are invoked via `bash` if the file exists, not only if it has the executable bit set. This avoids issues on filesystems that don't preserve UNIX file permissions.
+- The PowerShell deployment (`deploy-local.ps1`) mirrors the same phases and calls the same bash helper scripts for workflow loading and smoke tests, sourcing credentials from the environment or `.env`.
+
+#### Post-deploy validation
+
+After the API is healthy, the deployment runs `scripts/testing/smoke-tests.sh` to validate the stack. These checks are lightweight and fail-fast:
+
+- API: `GET /system/health` on `API_HOST_PORT` (defaults to 5000)
+- Grafana: `GET /api/health`
+- Prometheus: `GET /-/ready`
+- n8n: `GET /`
+- RabbitMQ management API (if `RABBITMQ_DEFAULT_USER`/`RABBITMQ_DEFAULT_PASS` are available): `GET /api/overview`
+- Containers running: `enhanced-ai-postgres`, `enhanced-ai-neo4j`, `enhanced-ai-rabbitmq`, `enhanced-ai-agent-api`
+- Postgres: `docker exec enhanced-ai-postgres psql -c 'select 1;'`
+- Neo4j: `docker exec enhanced-ai-neo4j cypher-shell 'RETURN 1;'`
+- Redis: `docker exec enhanced-ai-redis redis-cli PING`
+
+The script prints a concise OK/WARN/FAIL status for each check and exits non-zero if any checks fail. Failures are logged as warnings by the deployment scripts to avoid interrupting iterative development, but you should investigate and resolve them.
+
 **Cloud Deployment**:
 
 ```bash

@@ -12,6 +12,8 @@ param(
   [switch]$Check,
   [switch]$Unstructured,
   [switch]$NoUnstructured,
+  [switch]$LoadWorkflows,
+  [switch]$RunSmokeTests,
   [switch]$Help
 )
 
@@ -48,7 +50,7 @@ function Get-ApiPort {
 }
 
 # Verify API JSON health endpoint and fail fast if degraded
-function Verify-ApiHealth {
+function Test-ApiHealth {
   $port = Get-ApiPort
   $url = "http://localhost:$port/system/health"
   Write-Log "Verifying API health at $url"
@@ -170,15 +172,17 @@ function Show-Usage {
   @"
 NeoV3 Local Deployment (PowerShell)
 
-Usage: .\deploy-local.ps1 [-Fresh] [-Reuse] [-Status] [-Check] [-Unstructured] [-NoUnstructured] [-Help]
+Usage: .\deploy-local.ps1 [-Fresh] [-Reuse] [-Status] [-Check] [-Unstructured] [-NoUnstructured] [-LoadWorkflows] [-RunSmokeTests] [-Help]
 
 Options:
-  -Fresh   FULL RESET: down -v, clear deploy_tmp/, recreate .env and secrets
+  -Fresh   FULL RESET: down -v, clear deploy_tmp, recreate .env and secrets
   -Reuse   Reuse existing containers (no recreate), skip pulls
   -Status  Print docker compose ps and per-container health and exit
   -Check   Validate tools, .env keys, and compose config (no changes)
   -Unstructured Include Unstructured worker overlay (default)
   -NoUnstructured Opt out of Unstructured worker (default is ON)
+  -LoadWorkflows After n8n is up, import workflows (optional)
+  -RunSmokeTests After API is up, run smoke tests (optional)
   -Help    Show this help and exit
 
 Phases:
@@ -578,6 +582,33 @@ function Invoke-PhaseOrchestration {
   try { Wait-Healthy 'enhanced-ai-n8n' 420 } catch { Write-Log "n8n not healthy yet" 'WARN' }
 }
 
+function Invoke-PhaseWorkflows {
+  # Run bash workflow loader if available
+  $loader = Join-Path $Script:Root "scripts/load-workflows.sh"
+  if (-not (Test-Path $loader)) { Write-Log "Workflow loader not found at $loader; skipping" 'WARN'; return }
+  $bash = Get-Command bash -ErrorAction SilentlyContinue
+  if (-not $bash) { Write-Log "bash not found in PATH; cannot execute $loader" 'WARN'; return }
+
+  # Pull credentials from env or .env
+  $n8nUser = if ($env:N8N_BASIC_AUTH_USER) { $env:N8N_BASIC_AUTH_USER } else { (Get-DotEnvValue 'N8N_BASIC_AUTH_USER') }
+  $n8nPass = if ($env:N8N_BASIC_AUTH_PASSWORD) { $env:N8N_BASIC_AUTH_PASSWORD } else { (Get-DotEnvValue 'N8N_BASIC_AUTH_PASSWORD') }
+  if (-not $n8nUser -or $n8nUser.Trim() -eq '') { $n8nUser = 'admin' }
+  if (-not $n8nPass -or $n8nPass.Trim() -eq '') { Write-Log "N8N_BASIC_AUTH_PASSWORD not set; skipping workflow import" 'WARN'; return }
+
+  Write-Log ("Loading n8n workflows via {0}" -f $loader)
+  $prevUser = $env:N8N_BASIC_AUTH_USER; $prevPass = $env:N8N_BASIC_AUTH_PASSWORD
+  try {
+    $env:N8N_BASIC_AUTH_USER = $n8nUser
+    $env:N8N_BASIC_AUTH_PASSWORD = $n8nPass
+    & $bash $loader 2>&1 | ForEach-Object { Write-Log $_ }
+  } catch {
+    Write-Log ("Workflow loading encountered errors: {0}" -f $_.Exception.Message) 'WARN'
+  } finally {
+    $env:N8N_BASIC_AUTH_USER = $prevUser
+    $env:N8N_BASIC_AUTH_PASSWORD = $prevPass
+  }
+}
+
 function Invoke-PhaseAPI {
   Write-Log "Building and starting API"
   if ($UseUnstructured -and (Test-Path $UnstructuredComposeFile)) {
@@ -589,7 +620,21 @@ function Invoke-PhaseAPI {
   }
   Wait-Healthy 'enhanced-ai-agent-api' 300
   # Extra verification from host perspective
-  try { Verify-ApiHealth } catch { throw }
+  try { Test-ApiHealth } catch { throw }
+}
+
+function Invoke-SmokeTests {
+  # Run bash smoke tests if available
+  $smoke = Join-Path $Script:Root "scripts/testing/smoke-tests.sh"
+  if (-not (Test-Path $smoke)) { Write-Log "Smoke test script not found at $smoke; skipping" 'WARN'; return }
+  $bash = Get-Command bash -ErrorAction SilentlyContinue
+  if (-not $bash) { Write-Log "bash not found in PATH; cannot execute $smoke" 'WARN'; return }
+  Write-Log ("Running smoke tests via {0}" -f $smoke)
+  try {
+    & $bash $smoke 2>&1 | ForEach-Object { Write-Log $_ }
+  } catch {
+    Write-Log ("Smoke tests reported failures: {0}" -f $_.Exception.Message) 'WARN'
+  }
 }
 
 function Write-Summary {
@@ -643,6 +688,8 @@ Invoke-PhaseUnstructured
 Invoke-DatabaseMigrations
 Invoke-PhaseMonitoring
 Invoke-PhaseOrchestration
+if ($LoadWorkflows) { Invoke-PhaseWorkflows } else { Write-Log "Skipping workflow import (enable with -LoadWorkflows)" 'WARN' }
 Invoke-PhaseAPI
+if ($RunSmokeTests) { Invoke-SmokeTests } else { Write-Log "Skipping smoke tests (enable with -RunSmokeTests)" 'WARN' }
 Write-Summary
 Write-Log ("Local deployment completed. API http://localhost:{0} Grafana http://localhost:3000 Prometheus http://localhost:9090 n8n http://localhost:5678" -f (Get-ApiPort)) 'SUCCESS'

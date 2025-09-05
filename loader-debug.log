@@ -1,0 +1,10 @@
+[0;34m🔄 Loading n8n workflows at deploy time...[0m
+[1;33m🔐 Loading credentials from .env...[0m
+[0;34m👤 Using n8n credentials for user '[1;33madmin[0;34m' (password: ****)[0m
+[0;34m🌐 Target n8n URL: [1;33mhttp://localhost:5678[0m
+[1;33m⏳ Waiting for n8n service to be ready...[0m
+[0;32m✅ n8n is ready and accessible[0m
+[0;34m📁 Workflow directory: ./workflows/enhanced[0m
+[0;34m🧮 Total workflows detected: [1;33m34[0m
+[0;34m🔍 Processing workflows recursively under: [1;33m./workflows/enhanced[0m
+[0;34m📄 Files discovered: [1;33m34[0m

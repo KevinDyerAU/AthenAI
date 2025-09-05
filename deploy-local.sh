@@ -36,7 +36,7 @@ usage() {
   cat <<'EOF'
 NeoV3 Local Deployment
 
-Usage: ./deploy-local.sh [--fresh | --reuse] [--status] [--check] [--no-unstructured] [--help]
+Usage: ./deploy-local.sh [--fresh | --reuse] [--status] [--check] [--no-unstructured] [--load-workflows] [--run-smoke-tests] [--help]
 
 Options:
   --fresh   Bring the stack down (-v) and recreate containers
@@ -44,6 +44,8 @@ Options:
   --status  Print docker compose ps and per-container health and exit
   --check   Validate tools, .env keys, and compose config (no changes)
   --no-unstructured  Opt out of starting the Unstructured worker (enabled by default)
+  --load-workflows   After n8n is up, import workflows (optional)
+  --run-smoke-tests  After API is up, run smoke tests (optional)
   --help    Show this help and exit
 
 Phases:
@@ -58,6 +60,7 @@ EOF
 
 # --- Args ---
 SKIP_PULL=false; FRESH_START=false; DOCKER_UP_ARGS=""; STATUS_ONLY=false; CHECK_ONLY=false; USE_UNSTRUCTURED=true
+DO_WORKFLOWS=false; DO_SMOKE_TESTS=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --reuse) SKIP_PULL=true; FRESH_START=false; DOCKER_UP_ARGS="--no-recreate" ;;
@@ -66,6 +69,8 @@ while [[ $# -gt 0 ]]; do
     --check) CHECK_ONLY=true ;;
     --unstructured|--with-unstructured) USE_UNSTRUCTURED=true ;;
     --no-unstructured|--without-unstructured) USE_UNSTRUCTURED=false ;;
+    --load-workflows) DO_WORKFLOWS=true ;;
+    --run-smoke-tests) DO_SMOKE_TESTS=true ;;
     --help|-h) usage; exit 0 ;;
     *) warn "Unknown option: $1"; usage; exit 1 ;;
   esac
@@ -444,6 +449,27 @@ phase_orchestration(){
   wait_healthy enhanced-ai-n8n 420 || warn "n8n health check not yet green; continuing"
 }
 
+phase_workflows(){
+  # Load n8n workflows once n8n is up
+  local loader="$SCRIPT_DIR/scripts/load-workflows.sh"
+  if [[ -f "$loader" ]]; then
+    log "Loading n8n workflows via $loader"
+    # Pass required credentials from .env if not present in the environment
+    local nuser="${N8N_BASIC_AUTH_USER:-}"
+    local npass="${N8N_BASIC_AUTH_PASSWORD:-}"
+    if [[ -z "$nuser" ]]; then nuser="$(get_dotenv_value N8N_BASIC_AUTH_USER)"; fi
+    if [[ -z "$npass" ]]; then npass="$(get_dotenv_value N8N_BASIC_AUTH_PASSWORD)"; fi
+    if [[ -z "$nuser" ]]; then nuser="admin"; fi
+    if [[ -z "$npass" ]]; then
+      warn "N8N_BASIC_AUTH_PASSWORD not set; skipping workflow import"
+    else
+      N8N_BASIC_AUTH_USER="$nuser" N8N_BASIC_AUTH_PASSWORD="$npass" bash "$loader" || warn "Workflow loading encountered errors"
+    fi
+  else
+    warn "Workflow loader not found or not executable at $loader"
+  fi
+}
+
 phase_api(){
   log "Building and starting API"
   if [[ "$USE_UNSTRUCTURED" == true ]]; then
@@ -455,6 +481,17 @@ phase_api(){
   fi
   wait_healthy enhanced-ai-agent-api 300
   verify_api_health
+}
+
+run_smoke_tests(){
+  # Execute post-deploy smoke tests
+  local smoke="$SCRIPT_DIR/scripts/testing/smoke-tests.sh"
+  if [[ -f "$smoke" ]]; then
+    log "Running smoke tests via $smoke"
+    bash "$smoke" || warn "Smoke tests reported failures"
+  else
+    warn "Smoke test script not found or not executable at $smoke"
+  fi
 }
 
 summary(){
@@ -548,7 +585,17 @@ main(){
   phase_migrations
   phase_monitoring
   phase_orchestration
+  if [[ "$DO_WORKFLOWS" == true ]]; then
+    phase_workflows
+  else
+    warn "Skipping workflow import (enable with --load-workflows)"
+  fi
   phase_api
+  if [[ "$DO_SMOKE_TESTS" == true ]]; then
+    run_smoke_tests
+  else
+    warn "Skipping smoke tests (enable with --run-smoke-tests)"
+  fi
   summary
   success "Local deployment completed. Access: API http://localhost:8000, Grafana http://localhost:3000, Prometheus http://localhost:9090, n8n http://localhost:5678"
 }
